@@ -2,6 +2,11 @@
   "default_icon": "train",
   "icons": {},
   "ranges": [
-    {"start": 1, "end": 2, "icon": "plane"}
+    {"start": 1, "end": 2, "icon": "plane"},
+    {"start": 20, "end": 27, "icon": "bullet_train"},
+    {"start": 30, "end": 45, "icon": "bus"},
+    {"start": 56, "end": 58, "icon": "bullet_train"},
+    {"start": 76, "end": 77, "icon": "bullet_train"},
+    {"start": 101, "end": 104, "icon": "bullet_train"}
   ]
 }

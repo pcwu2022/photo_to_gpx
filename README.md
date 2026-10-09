@@ -1,6 +1,6 @@
 # Photo travel video
 
-A local Python tool that turns timestamped GPS photos into an H.264 MP4 with a moving car, train, plane, or boat, smooth flight camera transitions, rounded local turns, fixed arrival pauses, a ground-speed floor and zoom-dependent screen-speed ceiling, persistent circular photo markers, and a final overview of every accepted photo. Defaults: **1920×1080, 30 FPS**, **90 seconds of baseline motion**, retimed by speed limits, plus arrival pauses and a 10-second overview, elapsed-time-based playback, and the flying camera.
+A local Python tool that turns timestamped GPS photos into an H.264 MP4 with a moving car, train, bullet train, plane, boat, or bus, smooth flight camera transitions, rounded local turns, fixed arrival pauses, a ground-speed floor and zoom-dependent screen-speed ceiling, persistent circular photo markers, and a final overview of every accepted photo. Defaults: **1920×1080, 30 FPS**, **90 seconds of baseline motion**, retimed by speed limits, plus arrival pauses and a 10-second overview, elapsed-time-based playback, and the flying camera.
 
 ## Assessment and reuse
 
@@ -54,9 +54,7 @@ photo_to_gpx/
     ├── photo_markers.py
     ├── vehicle_config.py
     └── vehicle_icons.py
-photo_to_gpx/assets/icons/   # Editable car, train, plane, and boat SVGs
-photo_to_gpx/tools/
-└── export_icons.py          # Regenerate built-in SVG artwork
+photo_to_gpx/assets/icons/   # Editable car, train, bullet train, plane, boat, and bus SVGs
 tests/
 └── test_video.py
 ```
@@ -79,7 +77,7 @@ For each accepted pair, use [PyProj `Geod.inv` and `Geod.fwd`](https://pyproj4.g
 
 Before speed limits, the default `--timing time` maps the sleep-adjusted elapsed intervals to the chosen journey duration with one scale factor. A three-hour interval receives three times the video time of a one-hour interval after overnight adjustment, regardless of distance. Within each segment, the real timestamp advances linearly. On geodesic segments the distance fraction also advances linearly; rounded local curves are reparameterized by arc length. The speed controller then shortens or lengthens intervals when needed; intervals within the limits keep their original elapsed-time allocation. Original photo timestamps and route geometry remain intact.
 
-By default, gaps longer than seven hours that cross local midnight have **seven hours of sleep time subtracted once per gap**, before proportional allocation or compressed timing. Short midnight crossings keep their actual elapsed time; adjusted intervals are at least one second. Photo EXIF UTC offsets determine local dates; `--timezone` applies when offsets are missing and to GPX inputs. Original timestamps, GPS plausibility checks, and arrival pauses remain unchanged. Use `--no-sleep-adjustment` to disable this feature. Reports include `sleep_adjustments` with the elapsed, subtracted, and adjusted seconds. With a fixed `--duration`, sleep removal changes each segment's share of that baseline rather than subtracting seven hours from the video itself.
+By default, subtract **seven hours once per gap** only when all three conditions hold: at least seven hours of real elapsed time, physical WGS84 distance strictly above `--sleep-distance-km` (default **1,000 km**), and crossing **2 AM in the departure photo's local timezone**. Adjusted intervals are at least one second. EXIF or recovered GPS offsets define that timezone; `--timezone` applies to missing-offset and GPX inputs. Original UTC timestamps, GPS plausibility checks, and arrival pauses remain unchanged. Use `--no-sleep-adjustment` to disable this feature. Reports include `sleep_adjustments` with distance and elapsed, subtracted, and adjusted seconds. With a fixed `--duration`, sleep removal changes each segment's share of that baseline.
 
 `--duration 90` specifies the **baseline movement portion**, before speed limits or pauses; proportional mode defaults to 90 seconds. After every segment, freeze the vehicle and timestamp for a constant wait:
 
@@ -160,23 +158,15 @@ Use `--config vehicles.example.json` to select icons by raw photo index:
 
 Indices are **1-based and inclusive**, assigned to all supported image files in the directory recursively, sorted by case-sensitive relative filename in natural numeric order (`1.jpg`, `2.jpg`, …, `10.jpg`), **before metadata filtering or chronological sorting**. Images missing GPS or timestamps still count. Non-image files do not count. Later rules win when ranges overlap, so index 5 above selects `plane`. Unspecified indices use `default_icon`, or `--vehicle` if the JSON omits it (default `car`).
 
-Each travel leg uses the icon selected for its destination photo's raw index; at a photo arrival and its pause, that photo's icon is used. Available built-ins are `car`, `train`, `plane`, and `boat`. Use `--vehicle boat` for a boat by default, or `"icon": "boat"` in a JSON range. For a custom north-facing transparent SVG or raster image, add an entry such as `"icons": {"ferry": "icons/ferry.png"}` and use `"icon": "ferry"` in a range. Image paths resolve relative to the JSON file.
+Each travel leg uses the icon selected for its destination photo's raw index; at a photo arrival and its pause, that photo's icon is used. Available built-ins are `car`, `train`, `bullet_train`, `plane`, `boat`, and `bus`. Use `--vehicle boat` for a boat by default, or `"icon": "boat"` in a JSON range. For a custom north-facing transparent SVG or raster image, add an entry such as `"icons": {"ferry": "icons/ferry.png"}` and use `"icon": "ferry"` in a range. Image paths resolve relative to the JSON file.
 
 The generated `*.photo-index.json` lists every raw index, relative filename, selected icon, whether it became a route anchor/photo event, and any skip reason. It also records each valid photo’s UTC timestamp, chronological index, and timestamp source (`exif_offset`, `gps_utc_offset`, or `fallback_timezone`). Chronological rendering does not change raw icon indices. Consult this manifest when editing ranges. `vehicles.example.json` illustrates the requested ranges; its assignments do not infer actual transport modes from the photos.
 
 ## Editable SVG icons
 
-Built-in artwork lives in `photo_to_gpx/assets/icons/car.svg`, `train.svg`, `plane.svg`, and `boat.svg`. Edit these files to change the built-in icons. The renderer reads them directly through `vehicle_icons.py`, rasterizes each once using CairoSVG, and caches rotations during rendering. Icons face north/up and have a transparent background. Custom SVG files also work with `--icon` and the JSON `icons` mapping; PNG and other Pillow-supported formats remain supported.
+Built-in artwork lives in `photo_to_gpx/assets/icons/car.svg`, `train.svg`, `bullet_train.svg`, `plane.svg`, `boat.svg`, and `bus.svg`. Edit these files to change the built-in icons. The renderer reads them directly through `vehicle_icons.py`, rasterizes each once using CairoSVG, and caches rotations during rendering. Icons face north/up and have a transparent background. Custom SVG files also work with `--icon` and the JSON `icons` mapping; PNG and other Pillow-supported formats remain supported.
 
-Generate all four SVGs from the original vector definitions:
-
-```bash
-.venv/bin/python -m photo_to_gpx.tools.export_icons
-# Export elsewhere instead of replacing the renderer's assets:
-.venv/bin/python -m photo_to_gpx.tools.export_icons --output-dir /tmp/vehicle-icons
-```
-
-Regenerating the default directory replaces any edits to those SVG files. On Linux, CairoSVG requires the system Cairo library (typically `libcairo2`).
+Use `--vehicle bus` or `--vehicle bullet_train`, or select those names in JSON ranges. SVG files are the source artwork; edit them directly. On Linux, CairoSVG requires the system Cairo library (typically `libcairo2`).
 
 ## Run
 

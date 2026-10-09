@@ -13,6 +13,10 @@ from ..converters.convert import dms_to_decimal
 from ..converters.gpx_to_timeline import read_gpx_points
 
 GEOD = Geod(ellps="WGS84")
+SLEEP_DISTANCE_KM = 1000
+SLEEP_HOURS = 7
+SLEEP_CUTOFF_HOUR = 2
+
 EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".heic"}
 
 
@@ -194,24 +198,35 @@ class Position:
     segment: int
 
 
+def crosses_sleep_cutoff(start_local, end_utc):
+    """Detect the next local 2 AM in the departure photo's timezone."""
+    cutoff = start_local.replace(hour=SLEEP_CUTOFF_HOUR, minute=0, second=0, microsecond=0)
+    start_utc = start_local.astimezone(timezone.utc)
+    if cutoff.astimezone(timezone.utc) <= start_utc:
+        cutoff = (start_local + timedelta(days=1)).replace(
+            hour=SLEEP_CUTOFF_HOUR, minute=0, second=0, microsecond=0)
+    return start_utc < cutoff.astimezone(timezone.utc) <= end_utc
+
+
 class Route:
     def __init__(self, photos, *, compression=0.5, real_seconds_per_video_second=300,
                  min_segment=0.8, max_segment=6, max_speed_kmh=350, gap_hours=12,
                  timing="time", turn_radius_m=0, curve_limit_km=150,
-                 subtract_sleep=True, sleep_timezone="UTC"):
+                 subtract_sleep=True, sleep_timezone="UTC", sleep_distance_km=SLEEP_DISTANCE_KM):
         if timing not in ("time", "compressed"):
             raise ValueError("timing must be time or compressed")
         self.timing = timing
-        self.subtract_sleep = subtract_sleep
+        self.subtract_sleep, self.sleep_distance_km = subtract_sleep, sleep_distance_km
         self.sleep_adjustments = []
         try:
             sleep_zone = ZoneInfo(sleep_timezone)
         except ZoneInfoNotFoundError as error:
             raise ValueError(f"unknown timezone: {sleep_timezone}") from error
         if not (all(math.isfinite(v) for v in (compression, real_seconds_per_video_second,
-                                             min_segment, max_segment, max_speed_kmh, gap_hours))
+                                             min_segment, max_segment, max_speed_kmh, gap_hours, sleep_distance_km))
                 and 0 < compression <= 1 and real_seconds_per_video_second > 0
-                and 0 < min_segment <= max_segment and max_speed_kmh > 0 and gap_hours > 0):
+                and 0 < min_segment <= max_segment and max_speed_kmh > 0 and gap_hours > 0
+                and sleep_distance_km >= 0):
             raise ValueError("invalid time scaling, speed, or gap configuration")
         self.photos, self.issues = [], []
         self.events = []  # retained photo events, including colocated timestamp bursts
@@ -239,12 +254,14 @@ class Route:
             # Retiming uses capture-local dates; GPS plausibility and displayed timestamps
             # continue to use the unmodified elapsed UTC interval.
             start_local = previous.local_timestamp or previous.timestamp.astimezone(sleep_zone)
-            end_local = photo.local_timestamp or photo.timestamp.astimezone(sleep_zone)
             awake_seconds = seconds
-            if subtract_sleep and end_local.date() > start_local.date() and seconds > 7 * 3600:
-                awake_seconds = max(1.0, seconds - 7 * 3600)
+            if (subtract_sleep and seconds >= SLEEP_HOURS * 3600
+                    and distance > sleep_distance_km * 1000
+                    and crosses_sleep_cutoff(start_local, photo.timestamp)):
+                awake_seconds = max(1.0, seconds - SLEEP_HOURS * 3600)
                 self.sleep_adjustments.append({"segment": len(self.segments),
                                                "elapsed_seconds": seconds,
+                                               "distance_km": distance / 1000,
                                                "sleep_seconds": seconds - awake_seconds,
                                                "adjusted_seconds": awake_seconds})
             duration = awake_seconds / real_seconds_per_video_second if timing == "time" else min(

@@ -1,0 +1,13 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="72" viewBox="0 0 48 72">
+  <title>North-facing bus</title>
+  <rect x="3" y="13" width="10" height="13" rx="3" fill="#23313d" />
+  <rect x="3" y="48" width="10" height="13" rx="3" fill="#23313d" />
+  <rect x="35" y="13" width="10" height="13" rx="3" fill="#23313d" />
+  <rect x="35" y="48" width="10" height="13" rx="3" fill="#23313d" />
+  <rect x="8" y="2" width="32" height="67" rx="6" fill="#f4bb3b" stroke="white" stroke-width="2" />
+  <rect x="12" y="10" width="24" height="13" rx="3" fill="#b7e4f2" stroke="#23313d" stroke-width="2" />
+  <rect x="13" y="28" width="22" height="22" rx="3" fill="#f4f7fa" />
+  <rect x="12" y="55" width="24" height="8" rx="2" fill="#23313d" />
+  <line x1="16" y1="6" x2="32" y2="6" stroke="white" stroke-width="2" />
+</svg>

@@ -15,13 +15,13 @@ import imageio_ffmpeg
 from PIL import Image, ImageDraw
 from tqdm import tqdm
 
-from .travel_route import GEOD, Route, demo_route, load_gpx, scan_photos, raw_photo_paths
+from .travel_route import GEOD, Route, demo_route, load_gpx, scan_photos, raw_photo_paths, SLEEP_DISTANCE_KM
 from .video_map import PROJECT, project_positions
 from .vehicle_icons import vehicle_icon
 from .video_map import FlightMapCanvas, flight_camera_track, overview_pose, append_overview
 from .photo_markers import PhotoMarkers
 from .playback import Playback, MIN_PHOTO_INTERVAL_SECONDS
-from .vehicle_config import VehicleConfig
+from .vehicle_config import VehicleConfig, BUILT_INS
 from .speed_control import SpeedProfile
 
 
@@ -212,6 +212,7 @@ def render(route, output, *, size, fps, duration, cache, offline, plain,
             "encoder": codec, "render_seconds": round(elapsed, 2),
             "tiles": map_canvas.tile_count, "camera": camera, "map_provider": "schematic" if plain else provider,
             "subtract_sleep": route.subtract_sleep, "sleep_adjustments": route.sleep_adjustments,
+            "sleep_distance_km": route.sleep_distance_km,
             "timing": route.timing, "journey_seconds": motion_seconds, "final_photo_hold_seconds": final_hold,
             "nominal_journey_seconds": nominal_motion_seconds,
             "speed_limits": {"minimum_ground_mps": min_speed_mps,
@@ -256,7 +257,9 @@ def main():
     parser.add_argument("--timing", choices=["time", "compressed"], default="time",
                         help="time preserves real elapsed-time proportions; compressed bounds long gaps")
     parser.add_argument("--no-sleep-adjustment", action="store_true",
-                        help="Disable subtracting 7 hours from gaps longer than 7 hours crossing local midnight")
+                        help="Disable subtracting 7 hours from long-distance gaps crossing local 2 AM")
+    parser.add_argument("--sleep-distance-km", type=float, default=SLEEP_DISTANCE_KM,
+                        help="Minimum distance for sleep adjustment; default 1000 km (strictly above)")
     parser.add_argument("--compression", type=float, default=0.5)
     parser.add_argument("--time-scale", type=float, default=300, help="Real seconds per animation second before compression")
     parser.add_argument("--min-segment", type=float, default=0.8)
@@ -289,7 +292,7 @@ def main():
     parser.add_argument("--turn-radius-m", type=float, default=1000, help="Local corner smoothing radius; 0 disables curves")
     parser.add_argument("--no-photos", action="store_true")
     parser.add_argument("--camera-seconds", type=float, default=0.6)
-    parser.add_argument("--vehicle", choices=["car", "train", "plane", "boat"], default="car")
+    parser.add_argument("--vehicle", choices=sorted(BUILT_INS), default="car")
     parser.add_argument("--icon", type=Path, help="Transparent SVG or raster image facing up/north")
     parser.add_argument("--no-trail", action="store_true")
     parser.add_argument("--encoder", default="auto", help="auto, libx264, h264_nvenc, h264_qsv, etc.; software fallback")
@@ -301,7 +304,7 @@ def main():
             or not all(math.isfinite(v) and v > 0 for v in (args.local_span_km, args.flight_km,
                        args.popup_seconds, args.city_km, args.overview_seconds, args.overview_hold))
             or not all(math.isfinite(v) and v >= 0 for v in (args.long_pause, args.short_pause, args.turn_radius_m,
-                       args.min_speed_mps, args.max_screen_speed_px, args.max_zoom_rate))
+                       args.min_speed_mps, args.max_screen_speed_px, args.max_zoom_rate, args.sleep_distance_km))
             or not 1 <= args.max_tiles <= 5000
             or (args.duration is not None and (not math.isfinite(args.duration) or args.duration <= 0))):
         parser.error("require even dimensions >=320x240, FPS 1..120, positive timing/camera/popup values, and 1..5000 tiles")
@@ -317,7 +320,8 @@ def main():
                       min_segment=args.min_segment, max_segment=args.max_segment,
                       max_speed_kmh=args.max_speed_kmh, gap_hours=args.gap_hours, timing=args.timing,
                       turn_radius_m=args.turn_radius_m, curve_limit_km=args.flight_km,
-                      subtract_sleep=not args.no_sleep_adjustment, sleep_timezone=args.timezone)
+                      subtract_sleep=not args.no_sleep_adjustment, sleep_timezone=args.timezone,
+                      sleep_distance_km=args.sleep_distance_km)
         issues += route.issues
         if args.photos:
             accepted = {p.path for p in route.photos}

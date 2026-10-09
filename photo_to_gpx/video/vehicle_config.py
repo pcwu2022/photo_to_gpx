@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-BUILT_INS = {"car", "train", "plane", "boat"}
+BUILT_INS = {"car", "train", "plane", "boat", "bus", "bullet_train"}
 
 
 class VehicleConfig:

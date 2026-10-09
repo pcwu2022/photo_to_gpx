@@ -5,6 +5,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
+from dataclasses import replace
 
 from PIL import Image
 from PIL.TiffImagePlugin import IFDRational as Rational
@@ -87,8 +88,8 @@ class VideoChecks(unittest.TestCase):
     def test_overnight_sleep_adjustment_and_disable_flag(self):
         start = datetime(2026, 1, 1, 20, tzinfo=timezone.utc)
         photos = [Photo(start, 0, 0, "a"),
-                  Photo(start + timedelta(hours=12), 0, .01, "b"),
-                  Photo(start + timedelta(hours=14), 0, .02, "c")]
+                  Photo(start + timedelta(hours=12), 0, 12, "b"),
+                  Photo(start + timedelta(hours=14), 0, 12.02, "c")]
         route = Route(photos, real_seconds_per_video_second=3600)
         self.assertEqual([s[4] for s in route.segments], [5, 2])
         self.assertEqual(route.at(route.ends[1]).timestamp, photos[1].timestamp)
@@ -110,6 +111,7 @@ class VideoChecks(unittest.TestCase):
             photos, issues = scan_photos(directory)
             self.assertFalse(issues)
             self.assertEqual(photos[0].timestamp.date(), photos[1].timestamp.date())
+            photos = [replace(p, longitude=p.longitude + i * 12) for i, p in enumerate(photos)]
             route = Route(photos, real_seconds_per_video_second=3600)
             self.assertEqual(route.duration, 4)
             # With no EXIF offset, the supplied IANA zone has the same local dates.
@@ -117,14 +119,15 @@ class VideoChecks(unittest.TestCase):
                 write_test_photo(path, stamp, offset=None)
             photos, issues = scan_photos(directory, "Asia/Taipei")
             self.assertFalse(issues)
+            photos = [replace(p, longitude=p.longitude + i * 12) for i, p in enumerate(photos)]
             self.assertEqual(Route(photos, real_seconds_per_video_second=3600).duration, 4)
 
     def test_sleep_leaves_daytime_and_short_midnight_gaps_alone(self):
-        for hour, gap in ((8, 12), (23, 2), (20, 7)):
+        for hour, gap in ((8, 12), (23, 2), (15, 10)):
             start = datetime(2026, 1, 1, hour, tzinfo=timezone.utc)
             route = Route([Photo(start, 0, 0, "a"),
-                           Photo(start + timedelta(hours=gap), 0, .01, "b")],
-                          real_seconds_per_video_second=3600)
+                           Photo(start + timedelta(hours=gap), 0, 12, "b")],
+                          real_seconds_per_video_second=3600, max_speed_kmh=1200)
             self.assertEqual(route.duration, gap)
             self.assertFalse(route.sleep_adjustments)
         start = datetime(2026, 1, 1, 20, tzinfo=timezone.utc)
@@ -134,12 +137,31 @@ class VideoChecks(unittest.TestCase):
 
     def test_sleep_adjustment_does_not_change_gps_plausibility(self):
         start = datetime(2026, 1, 1, 20, tzinfo=timezone.utc)
-        # About 89 km/h over ten real hours; after sleep removal it exceeds 100.
+        # About 134 km/h over ten real hours; after sleep removal it exceeds 150.
         route = Route([Photo(start, 0, 0, "a"),
-                       Photo(start + timedelta(hours=10), 0, 8, "b")], max_speed_kmh=100,
+                       Photo(start + timedelta(hours=10), 0, 12, "b")], max_speed_kmh=150,
                       real_seconds_per_video_second=3600)
         self.assertEqual(len(route.photos), 2)
         self.assertEqual(route.duration, 3)
+
+    def test_sleep_requires_distance_seven_hours_and_local_2am(self):
+        for hour, gap, distance, expected in ((20, 12, 999000, 12),
+                                               (20, 12, 1001000, 5),
+                                               (15, 10, 1001000, 10),
+                                               (20, 7, 1001000, 1 / 3600),
+                                               (23, 6, 1001000, 6)):
+            start = datetime(2026, 1, 1, hour, tzinfo=timezone(timedelta(hours=9)))
+            lon, lat, _ = GEOD.fwd(0, 0, 90, distance)
+            route = Route([Photo(start, 0, 0, "a"),
+                           Photo(start + timedelta(hours=gap), lat, lon, "b")],
+                          real_seconds_per_video_second=3600, max_speed_kmh=1200)
+            self.assertAlmostEqual(route.duration, expected)
+        # A custom D enables the same rule on a shorter transfer.
+        start = datetime(2026, 1, 1, 20, tzinfo=timezone.utc)
+        route = Route([Photo(start, 0, 0, "a"),
+                       Photo(start + timedelta(hours=12), 0, 1, "b")],
+                      real_seconds_per_video_second=3600, sleep_distance_km=100)
+        self.assertEqual(route.duration, 5)
 
     def test_close_photo_spacing_uses_effective_speed_and_holds_at_anchor(self):
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
