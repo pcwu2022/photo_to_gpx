@@ -13,6 +13,7 @@ import time
 
 import imageio_ffmpeg
 from PIL import Image, ImageDraw
+from tqdm import tqdm
 
 from travel_route import GEOD, Route, demo_route, load_gpx, scan_photos, raw_photo_paths
 from video_map import PROJECT, project_positions, vehicle_icon
@@ -56,7 +57,8 @@ def render(route, output, *, size, fps, duration, cache, offline, plain,
            camera, camera_seconds, vehicle, icon_path, trail, encoder, provider,
            popup_seconds=4, show_photos=True, local_span_km=25, flight_km=150, max_tiles=1200,
            long_pause=0.2, short_pause=0.05, city_km=5, overview_seconds=5, overview_hold=5,
-           config=None, min_speed_mps=1000, max_screen_speed_px=540, max_zoom_rate=1):
+           # config=None, min_speed_mps=1000, max_screen_speed_px=540, max_zoom_rate=1):
+           config=None, min_speed_mps=1000, max_screen_speed_px=0, max_zoom_rate=0):
     video_seconds = duration or route.duration
     motion_count = max(2, round(video_seconds * fps))
     motion_seconds = (motion_count - 1) / fps
@@ -149,41 +151,42 @@ def render(route, output, *, size, fps, duration, cache, offline, plain,
             display_angle = None
             heading_alpha = 1 - math.exp(-1 / (fps * 0.12))
             try:
-                for index, (position, point) in enumerate(zip(positions, points)):
-                    frame, (x, y) = map_canvas.frame(point, index, position.animation_time)
-                    if show_photos:
-                        screen = lambda p: map_canvas.screen(p, index)
-                        markers.draw(frame, index / fps, screen, cameras[index][0], (x, y),
-                                     span_m=cameras[index][2])
-                    # Project the true bearing locally to account for map convergence.
-                    ahead_lon, ahead_lat, _ = GEOD.fwd(position.longitude, position.latitude, position.heading, 20)
-                    local_lon = point[0] / 6378137 * 180 / math.pi
-                    ahead_lon = local_lon + (ahead_lon - local_lon + 180) % 360 - 180
-                    ax, ay = PROJECT.transform(ahead_lon, ahead_lat)
-                    target_angle = math.degrees(math.atan2(ax - point[0], ay - point[1]))
-                    if display_angle is None:
-                        display_angle = target_angle
-                    else:
-                        display_angle += ((target_angle - display_angle + 180) % 360 - 180) * heading_alpha
-                    angle = round(display_angle) % 360
-                    anchor = bisect_left(route.ends, position.animation_time)
-                    if anchor < len(route.ends) and abs(route.ends[anchor] - position.animation_time) < 1e-8:
-                        raw_index = route.photos[anchor].raw_index
-                    else:
-                        raw_index = route.segments[position.segment][1].raw_index
-                    kind = config.for_photo(raw_index)
-                    key = (kind, angle)
-                    if key not in rotations:
-                        rotations[key] = icons[kind].rotate(-angle, resample=Image.Resampling.BICUBIC, expand=True)
-                    sprite = rotations[key]
-                    frame.paste(sprite, (round(x - sprite.width / 2), round(y - sprite.height / 2)), sprite)
-                    draw = ImageDraw.Draw(frame)
-                    draw.rectangle((0, 0, size[0], 32), fill="#23313d")
-                    draw.text((12, 9), position.timestamp.strftime("%Y-%m-%d %H:%M:%S UTC") + " • inferred route", fill="white")
-                    frame.paste(footer, (0, size[1] - footer.height))
-                    process.stdin.write(frame.tobytes())
-                    if index % max(1, fps * 5) == 0:
-                        print(f"Rendering {index + 1}/{frame_count} frames", flush=True)
+                with tqdm(total=frame_count, desc="Rendering", unit="frame",
+                          dynamic_ncols=True) as progress:
+                    for index, (position, point) in enumerate(zip(positions, points)):
+                        frame, (x, y) = map_canvas.frame(point, index, position.animation_time)
+                        if show_photos:
+                            screen = lambda p: map_canvas.screen(p, index)
+                            markers.draw(frame, index / fps, screen, cameras[index][0], (x, y),
+                                         span_m=cameras[index][2])
+                        # Project the true bearing locally to account for map convergence.
+                        ahead_lon, ahead_lat, _ = GEOD.fwd(position.longitude, position.latitude, position.heading, 20)
+                        local_lon = point[0] / 6378137 * 180 / math.pi
+                        ahead_lon = local_lon + (ahead_lon - local_lon + 180) % 360 - 180
+                        ax, ay = PROJECT.transform(ahead_lon, ahead_lat)
+                        target_angle = math.degrees(math.atan2(ax - point[0], ay - point[1]))
+                        if display_angle is None:
+                            display_angle = target_angle
+                        else:
+                            display_angle += ((target_angle - display_angle + 180) % 360 - 180) * heading_alpha
+                        angle = round(display_angle) % 360
+                        anchor = bisect_left(route.ends, position.animation_time)
+                        if anchor < len(route.ends) and abs(route.ends[anchor] - position.animation_time) < 1e-8:
+                            raw_index = route.photos[anchor].raw_index
+                        else:
+                            raw_index = route.segments[position.segment][1].raw_index
+                        kind = config.for_photo(raw_index)
+                        key = (kind, angle)
+                        if key not in rotations:
+                            rotations[key] = icons[kind].rotate(-angle, resample=Image.Resampling.BICUBIC, expand=True)
+                        sprite = rotations[key]
+                        frame.paste(sprite, (round(x - sprite.width / 2), round(y - sprite.height / 2)), sprite)
+                        draw = ImageDraw.Draw(frame)
+                        draw.rectangle((0, 0, size[0], 32), fill="#23313d")
+                        draw.text((12, 9), position.timestamp.strftime("%Y-%m-%d %H:%M:%S UTC") + " • inferred route", fill="white")
+                        frame.paste(footer, (0, size[1] - footer.height))
+                        process.stdin.write(frame.tobytes())
+                        progress.update(1)
                 process.stdin.close()
                 code = process.wait(timeout=120)
                 if code:
@@ -205,6 +208,7 @@ def render(route, output, *, size, fps, duration, cache, offline, plain,
     return {"frames": frame_count, "fps": fps, "size": size, "seconds": frame_count / fps,
             "encoder": codec, "render_seconds": round(elapsed, 2),
             "tiles": map_canvas.tile_count, "camera": camera, "map_provider": "schematic" if plain else provider,
+            "subtract_sleep": route.subtract_sleep, "sleep_adjustments": route.sleep_adjustments,
             "timing": route.timing, "journey_seconds": motion_seconds, "final_photo_hold_seconds": final_hold,
             "nominal_journey_seconds": nominal_motion_seconds,
             "speed_limits": {"minimum_ground_mps": min_speed_mps,
@@ -242,9 +246,11 @@ def main():
     parser.add_argument("--width", type=int, default=1920)
     parser.add_argument("--height", type=int, default=1080)
     parser.add_argument("--fps", type=int, default=30)
-    parser.add_argument("--duration", type=float, help="Baseline movement seconds before speed limits, pauses, and overview; default 180")
+    parser.add_argument("--duration", type=float, help="Baseline movement seconds before speed limits, pauses, and overview; default 90")
     parser.add_argument("--timing", choices=["time", "compressed"], default="time",
                         help="time preserves real elapsed-time proportions; compressed bounds long gaps")
+    parser.add_argument("--no-sleep-adjustment", action="store_true",
+                        help="Disable subtracting 7 hours from gaps longer than 7 hours crossing local midnight")
     parser.add_argument("--compression", type=float, default=0.5)
     parser.add_argument("--time-scale", type=float, default=300, help="Real seconds per animation second before compression")
     parser.add_argument("--min-segment", type=float, default=0.8)
@@ -266,10 +272,11 @@ def main():
     parser.add_argument("--city-km", type=float, default=5)
     parser.add_argument("--min-speed-mps", type=float, default=1000,
                         help="Minimum ground metres per animation second; 0 disables")
-    parser.add_argument("--max-screen-speed-px", type=float, default=540,
+    # parser.add_argument("--max-screen-speed-px", type=float, default=540,
+    parser.add_argument("--max-screen-speed-px", type=float, default=0,
                         help="Maximum pixels per animation second, accounting for zoom and camera motion; 0 disables")
-    parser.add_argument("--max-zoom-rate", type=float, default=1,
-                        help="Maximum camera zoom octaves per second; 0 disables")
+    parser.add_argument("--max-zoom-rate", type=float, default=0,
+                        help="Optional maximum camera zoom octaves per second; stretches travel time; default 0 (disabled)")
     parser.add_argument("--overview-seconds", type=float, default=5)
     parser.add_argument("--overview-hold", type=float, default=5)
     parser.add_argument("--config", type=Path, help="JSON icon ranges using 1-based raw photo indices")
@@ -282,7 +289,7 @@ def main():
     parser.add_argument("--encoder", default="auto", help="auto, libx264, h264_nvenc, h264_qsv, etc.; software fallback")
     args = parser.parse_args()
     if args.duration is None and args.timing == "time":
-        args.duration = 180
+        args.duration = 90
     if (args.width < 320 or args.height < 240 or args.width % 2 or args.height % 2
             or not 1 <= args.fps <= 120 or not math.isfinite(args.camera_seconds) or args.camera_seconds <= 0
             or not all(math.isfinite(v) and v > 0 for v in (args.local_span_km, args.flight_km,
@@ -303,7 +310,8 @@ def main():
         route = Route(photos, compression=args.compression, real_seconds_per_video_second=args.time_scale,
                       min_segment=args.min_segment, max_segment=args.max_segment,
                       max_speed_kmh=args.max_speed_kmh, gap_hours=args.gap_hours, timing=args.timing,
-                      turn_radius_m=args.turn_radius_m, curve_limit_km=args.flight_km)
+                      turn_radius_m=args.turn_radius_m, curve_limit_km=args.flight_km,
+                      subtract_sleep=not args.no_sleep_adjustment, sleep_timezone=args.timezone)
         issues += route.issues
         if args.photos:
             accepted = {p.path for p in route.photos}

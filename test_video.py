@@ -29,6 +29,63 @@ def write_test_photo(path, timestamp, offset="+08:00"):
 
 
 class VideoChecks(unittest.TestCase):
+    def test_overnight_sleep_adjustment_and_disable_flag(self):
+        start = datetime(2026, 1, 1, 20, tzinfo=timezone.utc)
+        photos = [Photo(start, 0, 0, "a"),
+                  Photo(start + timedelta(hours=12), 0, .01, "b"),
+                  Photo(start + timedelta(hours=14), 0, .02, "c")]
+        route = Route(photos, real_seconds_per_video_second=3600)
+        self.assertEqual([s[4] for s in route.segments], [5, 2])
+        self.assertEqual(route.at(route.ends[1]).timestamp, photos[1].timestamp)
+        self.assertEqual(route.at(route.duration).timestamp, photos[-1].timestamp)
+        self.assertEqual(route.sleep_adjustments[0]["sleep_seconds"], 7 * 3600)
+        original = Route(photos, real_seconds_per_video_second=3600, subtract_sleep=False)
+        self.assertEqual([s[4] for s in original.segments], [12, 2])
+        self.assertEqual(original.sleep_adjustments, [])
+        compressed = Route(photos, real_seconds_per_video_second=3600, timing="compressed",
+                           compression=1, min_segment=.01, max_segment=24)
+        self.assertEqual([s[4] for s in compressed.segments], [5, 2])
+
+    def test_sleep_uses_exif_local_dates_instead_of_utc_dates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            paths = [Path(directory) / name for name in ("a.jpg", "b.jpg")]
+            # Both timestamps are January 1 UTC, but capture-local dates cross midnight.
+            write_test_photo(paths[0], "2026:01:01 20:00:00", "+08:00")
+            write_test_photo(paths[1], "2026:01:02 07:00:00", "+08:00")
+            photos, issues = scan_photos(directory)
+            self.assertFalse(issues)
+            self.assertEqual(photos[0].timestamp.date(), photos[1].timestamp.date())
+            route = Route(photos, real_seconds_per_video_second=3600)
+            self.assertEqual(route.duration, 4)
+            # With no EXIF offset, the supplied IANA zone has the same local dates.
+            for path, stamp in zip(paths, ("2026:01:01 20:00:00", "2026:01:02 07:00:00")):
+                write_test_photo(path, stamp, offset=None)
+            photos, issues = scan_photos(directory, "Asia/Taipei")
+            self.assertFalse(issues)
+            self.assertEqual(Route(photos, real_seconds_per_video_second=3600).duration, 4)
+
+    def test_sleep_leaves_daytime_and_short_midnight_gaps_alone(self):
+        for hour, gap in ((8, 12), (23, 2), (20, 7)):
+            start = datetime(2026, 1, 1, hour, tzinfo=timezone.utc)
+            route = Route([Photo(start, 0, 0, "a"),
+                           Photo(start + timedelta(hours=gap), 0, .01, "b")],
+                          real_seconds_per_video_second=3600)
+            self.assertEqual(route.duration, gap)
+            self.assertFalse(route.sleep_adjustments)
+        start = datetime(2026, 1, 1, 20, tzinfo=timezone.utc)
+        route = Route([Photo(start, 0, 0, "a"),
+                       Photo(start + timedelta(hours=7, microseconds=1), 0, .01, "b")])
+        self.assertGreater(route.duration, 0)
+
+    def test_sleep_adjustment_does_not_change_gps_plausibility(self):
+        start = datetime(2026, 1, 1, 20, tzinfo=timezone.utc)
+        # About 89 km/h over ten real hours; after sleep removal it exceeds 100.
+        route = Route([Photo(start, 0, 0, "a"),
+                       Photo(start + timedelta(hours=10), 0, 8, "b")], max_speed_kmh=100,
+                      real_seconds_per_video_second=3600)
+        self.assertEqual(len(route.photos), 2)
+        self.assertEqual(route.duration, 3)
+
     def test_slow_leg_speed_floor_and_retimed_photo_arrival(self):
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
         route = Route([Photo(start, 0, 0, "a"),
@@ -49,9 +106,9 @@ class VideoChecks(unittest.TestCase):
         route = Route([Photo(start, 0, 0, "a"),
                        Photo(start + timedelta(hours=1), 0, .04, "b")])
         near = SpeedProfile(route, .001, (640, 360), 30, camera="fixed", local_span_km=25,
-                            min_speed_mps=1, max_zoom_rate=0)
+                            min_speed_mps=1, max_zoom_rate=0, max_screen_speed_px=540)
         far = SpeedProfile(route, .001, (640, 360), 30, camera="fixed", local_span_km=250,
-                           min_speed_mps=1, max_zoom_rate=0)
+                           min_speed_mps=1, max_zoom_rate=0, max_screen_speed_px=540)
         self.assertAlmostEqual(near.duration / far.duration, 10, places=4)
 
     def test_flight_speed_and_zoom_ceilings_at_frame_resolution(self):
@@ -59,7 +116,7 @@ class VideoChecks(unittest.TestCase):
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
         route = Route([Photo(start, 25, 121, "a"),
                        Photo(start + timedelta(hours=20), 50, 0, "b")], max_speed_kmh=1200)
-        profile = SpeedProfile(route, 2, (640, 360), 30)
+        profile = SpeedProfile(route, 2, (640, 360), 30, max_screen_speed_px=540, max_zoom_rate=1)
         self.assertEqual(profile.floor_conflicts, 0)
         playback = Playback(route, profile.duration, profile=profile)
         positions = [route.at(playback.route_time(i / 30)) for i in range(math.ceil(playback.duration * 30) + 1)]
@@ -70,6 +127,25 @@ class VideoChecks(unittest.TestCase):
         self.assertLessEqual(measured["maximum_vehicle_screen_px_per_second"], 540)
         self.assertLessEqual(measured["maximum_zoom_octaves_per_second"], 1.001)
         self.assertGreaterEqual(measured["minimum_moving_ground_mps"], 999)
+
+    def test_default_flight_moves_while_zooming_without_retiming_departure(self):
+        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        route = Route([Photo(start, 25, 121, "a"),
+                       Photo(start + timedelta(hours=20), 50, 0, "b")], max_speed_kmh=1200)
+        profile = SpeedProfile(route, 6, (1920, 1080), 30)
+        self.assertAlmostEqual(profile.duration, 6)
+        for fraction in (.05, .1, .25, .5, .75, .9, .95):
+            self.assertAlmostEqual(profile.route_time(6 * fraction), route.duration * fraction)
+        departure = profile.camera_at(0)
+        early = profile.camera_at(route.duration * .1)
+        middle = profile.camera_at(route.duration * .5)
+        late = profile.camera_at(route.duration * .9)
+        arrival = profile.camera_at(route.duration)
+        self.assertGreater(early[3], departure[3])
+        self.assertGreater(middle[3], early[3] * 2)
+        self.assertLess(late[3], middle[3])
+        self.assertLess(arrival[3], late[3])
+        self.assertNotEqual(departure[:2], early[:2])
 
     def test_stationary_photo_gap_does_not_create_long_idle_motion(self):
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)

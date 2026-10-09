@@ -23,6 +23,7 @@ class Photo:
     path: str
     altitude: float | None = None
     raw_index: int | None = None
+    local_timestamp: datetime | None = None
 
 
 def validate_point(photo):
@@ -78,7 +79,7 @@ def extract_photo(path, default_timezone, raw_index=None):
                         candidates.append(utc)
             if len(candidates) != 1:
                 raise ValueError("ambiguous/nonexistent local time; EXIF UTC offset required")
-            local = candidates[0]
+            local = candidates[0].astimezone(default_timezone)
         gps = exif.get_ifd(0x8825)
         if not all(key in gps for key in (1, 2, 3, 4)):
             raise ValueError("missing GPS coordinates or hemisphere references")
@@ -91,7 +92,7 @@ def extract_photo(path, default_timezone, raw_index=None):
         return validate_point(Photo(
             local.astimezone(timezone.utc),
             gps_coordinate(gps[2], lat_ref), gps_coordinate(gps[4], lon_ref),
-            str(path.resolve()), altitude, raw_index,
+            str(path.resolve()), altitude, raw_index, local,
         ))
 
 
@@ -146,10 +147,17 @@ class Position:
 class Route:
     def __init__(self, photos, *, compression=0.5, real_seconds_per_video_second=300,
                  min_segment=0.8, max_segment=6, max_speed_kmh=350, gap_hours=12,
-                 timing="time", turn_radius_m=0, curve_limit_km=150):
+                 timing="time", turn_radius_m=0, curve_limit_km=150,
+                 subtract_sleep=True, sleep_timezone="UTC"):
         if timing not in ("time", "compressed"):
             raise ValueError("timing must be time or compressed")
         self.timing = timing
+        self.subtract_sleep = subtract_sleep
+        self.sleep_adjustments = []
+        try:
+            sleep_zone = ZoneInfo(sleep_timezone)
+        except ZoneInfoNotFoundError as error:
+            raise ValueError(f"unknown timezone: {sleep_timezone}") from error
         if not (all(math.isfinite(v) for v in (compression, real_seconds_per_video_second,
                                              min_segment, max_segment, max_speed_kmh, gap_hours))
                 and 0 < compression <= 1 and real_seconds_per_video_second > 0
@@ -178,8 +186,19 @@ class Route:
             if speed > max_speed_kmh:
                 self.issues.append({"path": photo.path, "reason": f"GPS jump: {speed:.0f} km/h from previous accepted photo"})
                 continue
-            duration = seconds / real_seconds_per_video_second if timing == "time" else min(
-                max_segment, max(min_segment, (seconds / real_seconds_per_video_second) ** compression))
+            # Retiming uses capture-local dates; GPS plausibility and displayed timestamps
+            # continue to use the unmodified elapsed UTC interval.
+            start_local = previous.local_timestamp or previous.timestamp.astimezone(sleep_zone)
+            end_local = photo.local_timestamp or photo.timestamp.astimezone(sleep_zone)
+            awake_seconds = seconds
+            if subtract_sleep and end_local.date() > start_local.date() and seconds > 7 * 3600:
+                awake_seconds = max(1.0, seconds - 7 * 3600)
+                self.sleep_adjustments.append({"segment": len(self.segments),
+                                               "elapsed_seconds": seconds,
+                                               "sleep_seconds": seconds - awake_seconds,
+                                               "adjusted_seconds": awake_seconds})
+            duration = awake_seconds / real_seconds_per_video_second if timing == "time" else min(
+                max_segment, max(min_segment, (awake_seconds / real_seconds_per_video_second) ** compression))
             self.segments.append((previous, photo, heading, distance, duration))
             self.ends.append(self.ends[-1] + duration)
             self.photos.append(photo)

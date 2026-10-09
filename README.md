@@ -1,6 +1,6 @@
 # Photo travel video
 
-A local Python tool that turns timestamped GPS photos into an H.264 MP4 with a moving car, train, or plane, smooth flight camera transitions, rounded local turns, fixed arrival pauses, a ground-speed floor and zoom-dependent screen-speed ceiling, persistent circular photo markers, and a final overview of every accepted photo. Defaults: **1920×1080, 30 FPS**, **180 seconds of baseline motion**, retimed by speed limits, plus arrival pauses and a 10-second overview, elapsed-time-based playback, and the flying camera.
+A local Python tool that turns timestamped GPS photos into an H.264 MP4 with a moving car, train, or plane, smooth flight camera transitions, rounded local turns, fixed arrival pauses, a ground-speed floor and zoom-dependent screen-speed ceiling, persistent circular photo markers, and a final overview of every accepted photo. Defaults: **1920×1080, 30 FPS**, **90 seconds of baseline motion**, retimed by speed limits, plus arrival pauses and a 10-second overview, elapsed-time-based playback, and the flying camera.
 
 ## Assessment and reuse
 
@@ -14,7 +14,7 @@ A local Python tool that turns timestamped GPS photos into an H.264 MP4 with a m
 
 ## Stack and data flow
 
-Only **Pillow**, **PyProj**, and **imageio-ffmpeg** are required. No GeoPandas/Shapely/Matplotlib dependency is necessary for a sequence of geodesic segments and raster sprites. FFmpeg is supplied by imageio-ffmpeg's wheel on supported platforms; `IMAGEIO_FFMPEG_EXE` can select a system binary.
+**Pillow**, **PyProj**, **imageio-ffmpeg**, and **tqdm** are required. No GeoPandas/Shapely/Matplotlib dependency is necessary for a sequence of geodesic segments and raster sprites. FFmpeg is supplied by imageio-ffmpeg's wheel on supported platforms; `IMAGEIO_FFMPEG_EXE` can select a system binary.
 
 ```mermaid
 flowchart LR
@@ -43,9 +43,11 @@ Records sort by UTC time, then path for deterministic ties. Coordinate ranges an
 
 For each accepted pair, use [PyProj `Geod.inv` and `Geod.fwd`](https://pyproj4.github.io/pyproj/stable/api/geod.html) for WGS84 ellipsoidal distance, position, and heading. Latitude/longitude are **not** linearly interpolated. Web Mercator is used only for map alignment, not ground distances. Longitudes unwrap for continuous antimeridian rendering. Locations/geodesics beyond the raster projection's ±85.0511° coverage are rejected.
 
-Before speed limits, the default `--timing time` maps the entire accepted UTC interval to the chosen journey duration with one scale factor. A three-hour segment receives three times the video time of a one-hour segment, regardless of distance. Within each segment, the real timestamp advances linearly. On geodesic segments the distance fraction also advances linearly; rounded local curves are reparameterized by arc length. The speed controller then shortens or lengthens intervals when needed; intervals within the limits keep their original elapsed-time allocation. Original photo timestamps and route geometry remain intact.
+Before speed limits, the default `--timing time` maps the sleep-adjusted elapsed intervals to the chosen journey duration with one scale factor. A three-hour interval receives three times the video time of a one-hour interval after overnight adjustment, regardless of distance. Within each segment, the real timestamp advances linearly. On geodesic segments the distance fraction also advances linearly; rounded local curves are reparameterized by arc length. The speed controller then shortens or lengthens intervals when needed; intervals within the limits keep their original elapsed-time allocation. Original photo timestamps and route geometry remain intact.
 
-`--duration 180` specifies the **baseline movement portion**, before speed limits or pauses; proportional mode defaults to 180 seconds. After every segment, freeze the vehicle and timestamp for a constant wait:
+By default, gaps longer than seven hours that cross local midnight have **seven hours of sleep time subtracted once per gap**, before proportional allocation or compressed timing. Short midnight crossings keep their actual elapsed time; adjusted intervals are at least one second. Photo EXIF UTC offsets determine local dates; `--timezone` applies when offsets are missing and to GPX inputs. Original timestamps, GPS plausibility checks, and arrival pauses remain unchanged. Use `--no-sleep-adjustment` to disable this feature. Reports include `sleep_adjustments` with the elapsed, subtracted, and adjusted seconds. With a fixed `--duration`, sleep removal changes each segment's share of that baseline rather than subtracting seven hours from the video itself.
+
+`--duration 90` specifies the **baseline movement portion**, before speed limits or pauses; proportional mode defaults to 90 seconds. After every segment, freeze the vehicle and timestamp for a constant wait:
 
 - **0.2 seconds** for distances at or above `--flight-km` (default 150 km), configurable with `--long-pause`.
 - **0.05 seconds** for shorter distances, configurable with `--short-pause`.
@@ -67,9 +69,9 @@ This mode intentionally changes relative interval lengths to limit long gaps, bu
 
 ## Animation speed limits
 
-Defaults are **1,000 ground metres per animation second** (`--min-speed-mps 1000`) and **540 screen pixels per second** (`--max-screen-speed-px 540`). These are playback speeds, separate from the real-world `--max-speed-kmh` GPS plausibility check. The floor is independent of zoom: shorten a slow moving interval until its ground speed reaches the configured minimum. A same-location photo gap collapses to one frame of stationary motion rather than a long idle period. Arrival waits and the final overview remain separate.
+The minimum defaults to **1,000 ground metres per animation second** (`--min-speed-mps 1000`). The upper screen-speed cap is **temporarily disabled by default** (`--max-screen-speed-px 0`); use `--max-screen-speed-px 540` to restore the previous limit. These are playback speeds, separate from the real-world `--max-speed-kmh` GPS plausibility check. The floor is independent of zoom: shorten a slow moving interval until its ground speed reaches the configured minimum. A same-location photo gap collapses to one frame of stationary motion rather than a long idle period. Arrival waits and the final overview remain separate.
 
-The ceiling depends on the planned viewport: a pixel represents more ground distance at wider zoom, permitting faster planes while limiting vehicles in a local view. Calculate it using Web Mercator displacement, viewport size, camera translation, and zoom changes, with a small safety margin. The camera pulls back early on transfers outside the city threshold, rather than chasing a fast vehicle at street-level zoom. `--max-zoom-rate 1` additionally limits zoom changes to one doubling/halving per second. Local framing automatically widens if necessary to fit the requested floor and screen ceiling.
+The ceiling depends on the planned viewport: a pixel represents more ground distance at wider zoom, permitting faster planes while limiting vehicles in a local view. Calculate it using Web Mercator displacement, viewport size, camera translation, and zoom changes, with a small safety margin. The camera pulls back early on transfers outside the city threshold, rather than chasing a fast vehicle at street-level zoom. The zoom-rate cap is also disabled by default (`--max-zoom-rate 0`): travel and camera zoom advance together instead of slowing the vehicle near departure and arrival to satisfy a camera ceiling. Set `--max-zoom-rate 1` explicitly to limit zoom changes to one doubling/halving per second; this can substantially lengthen the video and make the vehicle creep during zoom transitions. Local framing automatically widens if necessary to fit the requested floor and screen ceiling.
 
 Limits can change the resulting video length; `--duration` is a baseline, not a fixed final runtime. Movement progress and photo triggers use the same piecewise clock, so photos still appear at their actual route anchors and fixed arrival waits stay unchanged. Set all three controls to zero to restore the original proportional clock and camera behavior:
 
@@ -81,7 +83,7 @@ If explicitly configured limits still conflict, the screen/zoom ceiling takes pr
 
 ## Caching and rendering
 
-The default `--camera fly` plans every camera viewport before encoding. It follows the journey, pulls back early for transfers outside `--city-km` when speed controls are enabled, and zooms into the destination. Without speed controls, the flight threshold is `--flight-km` (default 150). A sine-squared zoom envelope with earlier pullback on fast trips and eased camera centers follow departures and arrivals; the viewport widens if necessary to keep the vehicle visible. For segments within `--city-km` (default 5), the camera stays exactly still while the vehicle remains inside a safe viewport margin. If the vehicle reaches the edge, the camera pans at the current zoom. `--local-span-km` (default 25) controls local framing in projected map units. Camera planning remains independent of photo layout and vehicle timing.
+The default `--camera fly` plans every camera viewport before encoding. It follows the journey, pulls back early for transfers outside `--city-km` when speed controls are enabled, and zooms into the destination. Without speed controls, the flight threshold is `--flight-km` (default 150). By default, a sine-squared zoom envelope spreads the zoom across each trip while eased camera centers follow departures and arrivals; the viewport widens if necessary to keep the vehicle visible. For segments within `--city-km` (default 5), the camera stays exactly still while the vehicle remains inside a safe viewport margin. If the vehicle reaches the edge, the camera pans at the current zoom. `--local-span-km` (default 25) controls local framing in projected map units. Camera planning remains independent of photo layout and vehicle timing.
 
 Compute the union of required tiles across all camera zoom levels, then download/cache it before rendering. `--max-tiles` defaults to 1,200; when necessary, lower map zoom levels to stay within that budget. Requests use four workers. Rendering uses only cached files, with an LRU holding 128 tiles and four stitched viewport atlases; no network requests occur during encoding. Background atlases are rebuilt only when tile bounds or zoom level change. The route and trail use an independent curve sampling layer, so short turns remain rounded even when their photo times fall between video frames. Both the vehicle and the trail follow the same curves.
 
@@ -90,6 +92,8 @@ Compute the union of required tiles across all camera zoom levels, then download
 The default provider is the public [Esri World Topographic Map service](https://services.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer). `--map-provider carto` requires `CARTO_BASEMAP_API_KEY` for uncached tiles; [CARTO requires an API key](https://www.carto.com/basemaps/apikey/) and its anonymous endpoint returns watermarked PNGs. Cache paths use separate provider namespaces under `.cache/photo-video/`. `--offline` refuses missing/corrupt tiles, while `--plain-map` provides a schematic background without geographic tiles. Full attribution is cached into a wrapped footer and remains visible at smaller resolutions.
 
 Vehicle sprites are transparent, rotated clockwise according to projected heading, and cached by integer-degree rotation. Custom icons must face north/up. No full video frames are retained or written as PNGs: one RGB frame at a time streams to FFmpeg. An unavoidable frame copy and RGB byte conversion remain; Phase 3 should profile these before changing the architecture.
+
+During rendering, a `tqdm` progress bar on stderr shows completed/total frames, elapsed time, frames per second, and estimated time remaining. Progress advances after each frame is sent to FFmpeg and closes on completion or error.
 
 Automatic encoding probes actual one-frame H.264 encodes with NVENC, QSV, and VideoToolbox, then falls back to `libx264`. An explicit `--encoder` also falls back if its probe fails. Device availability depends on the FFmpeg build and host. A failed full encode leaves any existing destination video intact.
 
@@ -147,8 +151,8 @@ The generated `*.photo-index.json` lists every raw index, relative filename, sel
 .venv/bin/python photos_to_video.py --gpx trip.gpx --icon car.png -o trip.mp4
 
 # Updated test1 video: persistent map photos and raw-index icon ranges.
-.venv/bin/python photos_to_video.py --photos input/test1 --duration 180 \
-  --config vehicles.example.json --min-speed-mps 1000 --max-screen-speed-px 540 \
+.venv/bin/python photos_to_video.py --photos input/test1 --duration 90 \
+  --config vehicles.example.json --min-speed-mps 1000 --max-screen-speed-px 0 \
   -o sample/test1.mp4
 
 .venv/bin/python photos_to_video.py --help
@@ -157,4 +161,4 @@ The generated `*.photo-index.json` lists every raw index, relative filename, sel
 
 The adjacent `*.report.json` records frame count, encoder, rendering elapsed time, skipped-photo reasons, long-gap warnings, and each retained photo's animation time, UTC timestamp, coordinates, altitude, and path. Invalid input that prevents rendering is explained on stderr.
 
-`sample/test1.mp4` is the latest render of the supplied `input/test1` photos, with geographically fixed, map-scaled markers and the 540-pixel/second speed ceiling. The adjacent report and raw-photo index describe the render. Local photos, generated videos, and reports are excluded from Git. To create a synthetic demo, use the `--demo` command above.
+`sample/test1.mp4` is the latest render of the supplied `input/test1` photos, with geographically fixed, map-scaled markers and simultaneous travel/zoom. The 90-second baseline produces approximately 105 seconds including arrival pauses and the final overview; both screen-speed and zoom-rate ceilings are disabled by default. The adjacent report and raw-photo index describe the render. Local photos, generated videos, and reports are excluded from Git. To create a synthetic demo, use the `--demo` command above.

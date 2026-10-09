@@ -10,7 +10,8 @@ from video_map import project_positions, flight_camera_track, overview_pose
 class SpeedProfile:
     def __init__(self, route, motion_seconds, size, fps, *, camera="fly", camera_seconds=0.6,
                  local_span_km=25, flight_km=150, city_km=5, min_speed_mps=1000,
-                 max_screen_speed_px=540, max_zoom_rate=1):
+                 # max_screen_speed_px=540, max_zoom_rate=1):  # Restore upper cap.
+                 max_screen_speed_px=0, max_zoom_rate=0):
         values = (min_speed_mps, max_screen_speed_px, max_zoom_rate)
         if not all(math.isfinite(v) and v >= 0 for v in values):
             raise ValueError("animation speed limits must be finite and nonnegative")
@@ -38,6 +39,10 @@ class SpeedProfile:
         self.effective_local_span_km = local_span_km
         if camera == "fly":
             def ramp(distance):
+                if not max_screen_speed_px and not max_zoom_rate:
+                    # Spread the zoom over the trip when no camera ceiling is requested.
+                    # The old early pullback (64) completed most zoom near departure.
+                    return 1
                 if not min_speed_mps or not max_zoom_rate:
                     return 64
                 # Keep the zoom envelope feasible at the absolute ground-speed floor.
