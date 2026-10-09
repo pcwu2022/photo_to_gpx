@@ -3,8 +3,8 @@ import os
 import sys
 import tempfile
 
-from convert import generate_gpx
-from gpx_to_timeline import convert_gpx_to_timeline
+from .convert import generate_gpx
+from .gpx_to_timeline import convert_gpx_to_timeline
 
 
 def photos_to_timeline(

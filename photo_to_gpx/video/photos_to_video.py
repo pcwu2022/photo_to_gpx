@@ -15,13 +15,13 @@ import imageio_ffmpeg
 from PIL import Image, ImageDraw
 from tqdm import tqdm
 
-from travel_route import GEOD, Route, demo_route, load_gpx, scan_photos, raw_photo_paths
-from video_map import PROJECT, project_positions, vehicle_icon
-from video_map import FlightMapCanvas, flight_camera_track, overview_pose, append_overview
-from photo_markers import PhotoMarkers
-from playback import Playback
-from vehicle_config import VehicleConfig
-from speed_control import SpeedProfile
+from .travel_route import GEOD, Route, demo_route, load_gpx, scan_photos, raw_photo_paths
+from .video_map import PROJECT, project_positions, vehicle_icon
+from .video_map import FlightMapCanvas, flight_camera_track, overview_pose, append_overview
+from .photo_markers import PhotoMarkers
+from .playback import Playback
+from .vehicle_config import VehicleConfig
+from .speed_control import SpeedProfile
 
 
 def codec_options(codec):
@@ -55,10 +55,10 @@ def choose_encoder(executable, requested, size):
 
 def render(route, output, *, size, fps, duration, cache, offline, plain,
            camera, camera_seconds, vehicle, icon_path, trail, encoder, provider,
-           popup_seconds=4, show_photos=True, local_span_km=25, flight_km=150, max_tiles=1200,
+           popup_seconds=4, show_photos=True, local_span_km=12.5, flight_km=150, max_tiles=1200,
            long_pause=0.2, short_pause=0.05, city_km=5, overview_seconds=5, overview_hold=5,
-           # config=None, min_speed_mps=1000, max_screen_speed_px=540, max_zoom_rate=1):
-           config=None, min_speed_mps=1000, max_screen_speed_px=0, max_zoom_rate=0):
+           # config=None, min_speed_mps=2000, max_screen_speed_px=540, max_zoom_rate=1):
+           config=None, min_speed_mps=2000, max_screen_speed_px=0, max_zoom_rate=0):
     video_seconds = duration or route.duration
     motion_count = max(2, round(video_seconds * fps))
     motion_seconds = (motion_count - 1) / fps
@@ -263,14 +263,14 @@ def main():
     parser.add_argument("--offline", action="store_true", help="Use only cached tiles; fail if any are missing")
     parser.add_argument("--plain-map", action="store_true", help="Offline schematic background without geographic map tiles")
     parser.add_argument("--camera", choices=["fixed", "follow", "fly"], default="fly")
-    parser.add_argument("--local-span-km", type=float, default=25)
+    parser.add_argument("--local-span-km", type=float, default=12.5)
     parser.add_argument("--flight-km", type=float, default=150)
     parser.add_argument("--max-tiles", type=int, default=1200)
     parser.add_argument("--popup-seconds", type=float, default=4, help="Minimum final overview hold; photos persist after arrival")
     parser.add_argument("--long-pause", type=float, default=0.2)
     parser.add_argument("--short-pause", type=float, default=0.05)
     parser.add_argument("--city-km", type=float, default=5)
-    parser.add_argument("--min-speed-mps", type=float, default=1000,
+    parser.add_argument("--min-speed-mps", type=float, default=2000,
                         help="Minimum ground metres per animation second; 0 disables")
     # parser.add_argument("--max-screen-speed-px", type=float, default=540,
     parser.add_argument("--max-screen-speed-px", type=float, default=0,

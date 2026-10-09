@@ -8,8 +8,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from PIL import Image
 from pyproj import Geod, Transformer, CRS
 
-from convert import dms_to_decimal
-from gpx_to_timeline import read_gpx_points
+from ..converters.convert import dms_to_decimal
+from ..converters.gpx_to_timeline import read_gpx_points
 
 GEOD = Geod(ellps="WGS84")
 EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".heic"}

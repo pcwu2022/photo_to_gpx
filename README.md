@@ -4,9 +4,9 @@ A local Python tool that turns timestamped GPS photos into an H.264 MP4 with a m
 
 ## Assessment and reuse
 
-- `photos_to_timeline.py` already composes photo → GPX → Timeline JSON. Keep it for exporting to the existing Timeline Visualizer. The video pipeline avoids that intermediate conversion so photo paths, altitude, subsecond timestamps, and UTC offsets survive.
-- `convert.py` provides the reused `dms_to_decimal()` conversion. Its existing extraction path falls back to filesystem timestamps, can miss nested `DateTimeOriginal`, and writes naive local time with a `Z` suffix. The video metadata reader fixes these issues without changing the existing scripts' behavior.
-- `gpx_to_timeline.py` provides the reused `read_gpx_points()` and UTC timestamp parsing for the optional GPX video input.
+- `photo_to_gpx/converters/photos_to_timeline.py` already composes photo → GPX → Timeline JSON. Keep it for exporting to the existing Timeline Visualizer. The video pipeline avoids that intermediate conversion so photo paths, altitude, subsecond timestamps, and UTC offsets survive.
+- `photo_to_gpx/converters/convert.py` provides the reused `dms_to_decimal()` conversion. Its existing extraction path falls back to filesystem timestamps, can miss nested `DateTimeOriginal`, and writes naive local time with a `Z` suffix. The video metadata reader fixes these issues without changing the existing scripts' behavior.
+- `photo_to_gpx/converters/gpx_to_timeline.py` provides the reused `read_gpx_points()` and UTC timestamp parsing for the optional GPX video input.
 - [mahlernim/google-timeline-visualizer](https://github.com/mahlernim/google-timeline-visualizer) now contains Kotlin, web, **and Python** implementations. Inspected `visualizer.py` at commit `16714b0b23b93c3ec6aeef45b7ebbe1e76329847`, particularly `get_map_image`, tile coordinate functions, `interpolate_latlon`, and `build_camera_track`. Adapted its bounded tile stitching, canonical longitude tile wrapping, and smoothstep easing. Its in-memory tile cache and per-frame map updates are replaced here by a persistent disk cache and an atlas built before encoding. The current camera combines eased flight transitions with viewport locking for short city movements. The upstream MIT notice is in `THIRD_PARTY_LICENSE.txt`.
 - [trackanimation](https://pypi.org/project/trackanimation/) offers GPX plotting and video time normalization; its Matplotlib workflow is useful reference material, but it would still need the photo metadata, timing, camera, and compositor work.
 - [motionpicture](https://github.com/Sbozzolo/motionpicture) orchestrates frame generation and FFmpeg assembly through movie recipes and saved frame files. Direct frame streaming is a better fit here.
@@ -33,7 +33,37 @@ flowchart LR
     J --> K[H.264 MP4 and JSON report]
 ```
 
-Modules: `travel_route.py` handles metadata and timing; `video_map.py` handles camera planning, maps and sprites; `playback.py` inserts arrival holds; `speed_control.py` retimes movements against ground distance and planned camera zoom; `photo_markers.py` handles image caching and circular markers; `vehicle_config.py` reads raw-photo icon ranges; `photos_to_video.py` connects them with a small argparse entry point.
+Modules: `photo_to_gpx/video/travel_route.py` handles metadata and timing; `photo_to_gpx/video/video_map.py` handles camera planning, maps and sprites; `photo_to_gpx/video/playback.py` inserts arrival holds; `photo_to_gpx/video/speed_control.py` retimes movements against ground distance and planned camera zoom; `photo_to_gpx/video/photo_markers.py` handles image caching and circular markers; `photo_to_gpx/video/vehicle_config.py` reads raw-photo icon ranges; `photo_to_gpx/video/photos_to_video.py` connects them with a small argparse entry point.
+
+## Project structure
+
+```text
+photo_to_gpx/
+├── __init__.py
+├── __main__.py              # python -m photo_to_gpx
+├── converters/              # Photo → GPX → Timeline tools
+│   ├── convert.py
+│   ├── gpx_to_timeline.py
+│   └── photos_to_timeline.py
+└── video/                   # Metadata, animation, maps, and renderer
+    ├── photos_to_video.py
+    ├── travel_route.py
+    ├── video_map.py
+    ├── playback.py
+    ├── speed_control.py
+    ├── photo_markers.py
+    └── vehicle_config.py
+tests/
+└── test_video.py
+```
+
+Run module commands from the repository root. Conversion commands remain available:
+
+```bash
+.venv/bin/python -m photo_to_gpx.converters.convert --help
+.venv/bin/python -m photo_to_gpx.converters.gpx_to_timeline --help
+.venv/bin/python -m photo_to_gpx.converters.photos_to_timeline --help
+```
 
 ## Interpolation and time compression
 
@@ -69,7 +99,7 @@ This mode intentionally changes relative interval lengths to limit long gaps, bu
 
 ## Animation speed limits
 
-The minimum defaults to **1,000 ground metres per animation second** (`--min-speed-mps 1000`). The upper screen-speed cap is **temporarily disabled by default** (`--max-screen-speed-px 0`); use `--max-screen-speed-px 540` to restore the previous limit. These are playback speeds, separate from the real-world `--max-speed-kmh` GPS plausibility check. The floor is independent of zoom: shorten a slow moving interval until its ground speed reaches the configured minimum. A same-location photo gap collapses to one frame of stationary motion rather than a long idle period. Arrival waits and the final overview remain separate.
+The minimum defaults to **2,000 ground metres per animation second** (`--min-speed-mps 2000`). The upper screen-speed cap is **temporarily disabled by default** (`--max-screen-speed-px 0`); use `--max-screen-speed-px 540` to restore the previous limit. These are playback speeds, separate from the real-world `--max-speed-kmh` GPS plausibility check. The floor is independent of zoom: shorten a slow moving interval until its ground speed reaches the configured minimum. A same-location photo gap collapses to one frame of stationary motion rather than a long idle period. Arrival waits and the final overview remain separate.
 
 The ceiling depends on the planned viewport: a pixel represents more ground distance at wider zoom, permitting faster planes while limiting vehicles in a local view. Calculate it using Web Mercator displacement, viewport size, camera translation, and zoom changes, with a small safety margin. The camera pulls back early on transfers outside the city threshold, rather than chasing a fast vehicle at street-level zoom. The zoom-rate cap is also disabled by default (`--max-zoom-rate 0`): travel and camera zoom advance together instead of slowing the vehicle near departure and arrival to satisfy a camera ceiling. Set `--max-zoom-rate 1` explicitly to limit zoom changes to one doubling/halving per second; this can substantially lengthen the video and make the vehicle creep during zoom transitions. Local framing automatically widens if necessary to fit the requested floor and screen ceiling.
 
@@ -83,7 +113,7 @@ If explicitly configured limits still conflict, the screen/zoom ceiling takes pr
 
 ## Caching and rendering
 
-The default `--camera fly` plans every camera viewport before encoding. It follows the journey, pulls back early for transfers outside `--city-km` when speed controls are enabled, and zooms into the destination. Without speed controls, the flight threshold is `--flight-km` (default 150). By default, a sine-squared zoom envelope spreads the zoom across each trip while eased camera centers follow departures and arrivals; the viewport widens if necessary to keep the vehicle visible. For segments within `--city-km` (default 5), the camera stays exactly still while the vehicle remains inside a safe viewport margin. If the vehicle reaches the edge, the camera pans at the current zoom. `--local-span-km` (default 25) controls local framing in projected map units. Camera planning remains independent of photo layout and vehicle timing.
+The default `--camera fly` plans every camera viewport before encoding. It follows the journey, pulls back early for transfers outside `--city-km` when speed controls are enabled, and zooms into the destination. Without speed controls, the flight threshold is `--flight-km` (default 150). By default, a sine-squared zoom envelope spreads the zoom across each trip while eased camera centers follow departures and arrivals; the viewport widens if necessary to keep the vehicle visible. For segments within `--city-km` (default 5), the camera stays exactly still while the vehicle remains inside a safe viewport margin. If the vehicle reaches the edge, the camera pans at the current zoom. `--local-span-km` (default 12.5) controls local framing in projected map units. Camera planning remains independent of photo layout and vehicle timing.
 
 Compute the union of required tiles across all camera zoom levels, then download/cache it before rendering. `--max-tiles` defaults to 1,200; when necessary, lower map zoom levels to stay within that budget. Requests use four workers. Rendering uses only cached files, with an LRU holding 128 tiles and four stitched viewport atlases; no network requests occur during encoding. Background atlases are rebuilt only when tile bounds or zoom level change. The route and trail use an independent curve sampling layer, so short turns remain rounded even when their photo times fall between video frames. Both the vehicle and the trail follow the same curves.
 
@@ -134,29 +164,29 @@ The generated `*.photo-index.json` lists every raw index, relative filename, sel
 .venv/bin/python -m pip install -r requirements-video.txt
 
 # Real photos: specify the timezone used by photos that lack UTC offsets.
-.venv/bin/python photos_to_video.py --photos /path/to/photos \
+.venv/bin/python -m photo_to_gpx --photos /path/to/photos \
   --timezone America/New_York --duration 180 -o travel.mp4
 
 # Synthetic route demo (no photo files, so no photo markers).
-.venv/bin/python photos_to_video.py --demo --duration 6 -o sample/phase1-demo.mp4
+.venv/bin/python -m photo_to_gpx --demo --duration 6 -o sample/phase1-demo.mp4
 
 # Same demo using only the warmed disk cache.
-.venv/bin/python photos_to_video.py --demo --duration 6 --offline -o /tmp/demo-offline.mp4
+.venv/bin/python -m photo_to_gpx --demo --duration 6 --offline -o /tmp/demo-offline.mp4
 
 # Fully offline schematic, following camera, train vehicle.
-.venv/bin/python photos_to_video.py --demo --plain-map --camera follow \
+.venv/bin/python -m photo_to_gpx --demo --plain-map --camera follow \
   --vehicle train --width 1280 --height 720 -o train.mp4
 
 # Existing GPX and custom north-facing transparent icon.
-.venv/bin/python photos_to_video.py --gpx trip.gpx --icon car.png -o trip.mp4
+.venv/bin/python -m photo_to_gpx --gpx trip.gpx --icon car.png -o trip.mp4
 
 # Updated test1 video: persistent map photos and raw-index icon ranges.
-.venv/bin/python photos_to_video.py --photos input/test1 --duration 90 \
-  --config vehicles.example.json --min-speed-mps 1000 --max-screen-speed-px 0 \
+.venv/bin/python -m photo_to_gpx --photos input/test1 --duration 90 \
+  --config vehicles.example.json --min-speed-mps 2000 --max-screen-speed-px 0 \
   -o sample/test1.mp4
 
-.venv/bin/python photos_to_video.py --help
-.venv/bin/python -m unittest test_video -v
+.venv/bin/python -m photo_to_gpx --help
+.venv/bin/python -m unittest discover -s tests -v
 ```
 
 The adjacent `*.report.json` records frame count, encoder, rendering elapsed time, skipped-photo reasons, long-gap warnings, and each retained photo's animation time, UTC timestamp, coordinates, altitude, and path. Invalid input that prevents rendering is explained on stderr.

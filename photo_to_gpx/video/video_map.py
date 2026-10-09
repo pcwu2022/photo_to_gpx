@@ -201,7 +201,7 @@ def vehicle_icon(kind, path=None):
 
 
 def flight_camera_track(points, positions, route, size, fps, smoothing=0.6,
-                        local_span_km=25, flight_km=150, city_km=5, zoom_ramp=1):
+                        local_span_km=12.5, flight_km=150, city_km=5, zoom_ramp=1):
     """Endpoint-aware flight easing, with a locked viewport for nearby movements."""
     aspect = size[0] / size[1]
     local = local_span_km * 1000

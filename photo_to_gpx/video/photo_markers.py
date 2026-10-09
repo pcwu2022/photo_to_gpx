@@ -5,8 +5,8 @@ from pathlib import Path
 import math
 
 from PIL import Image, ImageDraw, ImageOps, ImageFilter
-from travel_route import GEOD
-from video_map import PROJECT
+from .travel_route import GEOD
+from .video_map import PROJECT
 
 
 class PhotoMarkers:

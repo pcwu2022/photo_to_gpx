@@ -1,6 +1,6 @@
 # APP_SPEC: Photo Travel Video Studio
 
-A consumer desktop app that turns a folder of geotagged photos (optionally enriched with Google Timeline data) into a shareable animated travel-map video. It is the productized successor to the existing Python CLI (`photos_to_video.py` and its modules), which remains the reference implementation for all route, timing, camera, and rendering behavior.
+A consumer desktop app that turns a folder of geotagged photos (optionally enriched with Google Timeline data) into a shareable animated travel-map video. It is the productized successor to the existing Python CLI (`photo_to_gpx/video/photos_to_video.py` and its modules), which remains the reference implementation for all route, timing, camera, and rendering behavior.
 
 ---
 

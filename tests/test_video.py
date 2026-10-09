@@ -8,12 +8,12 @@ from pathlib import Path
 from PIL import Image
 from PIL.TiffImagePlugin import IFDRational as Rational
 
-from travel_route import GEOD, Photo, Route, demo_route, scan_photos
-from video_map import MapCanvas, project_positions, flight_camera_track, FlightMapCanvas
-from photo_markers import PhotoMarkers
-from playback import Playback
-from vehicle_config import VehicleConfig
-from speed_control import SpeedProfile
+from photo_to_gpx.video.travel_route import GEOD, Photo, Route, demo_route, scan_photos
+from photo_to_gpx.video.video_map import MapCanvas, project_positions, flight_camera_track, FlightMapCanvas
+from photo_to_gpx.video.photo_markers import PhotoMarkers
+from photo_to_gpx.video.playback import Playback
+from photo_to_gpx.video.vehicle_config import VehicleConfig
+from photo_to_gpx.video.speed_control import SpeedProfile
 
 
 def write_test_photo(path, timestamp, offset="+08:00"):
@@ -92,8 +92,8 @@ class VideoChecks(unittest.TestCase):
                        Photo(start + timedelta(hours=1), 0, .01, "b"),
                        Photo(start + timedelta(hours=2), 0, .02, "c")])
         profile = SpeedProfile(route, 30, (640, 360), 30)
-        self.assertLessEqual(profile.duration, sum(s[3] for s in route.segments) / 1000)
-        self.assertTrue(all(s["average_ground_speed_mps"] >= 1000 for s in profile.legs))
+        self.assertLessEqual(profile.duration, sum(s[3] for s in route.segments) / 2000)
+        self.assertTrue(all(s["average_ground_speed_mps"] >= 2000 for s in profile.legs))
         self.assertEqual(profile.floor_conflicts, 0)
         playback = Playback(route, profile.duration, profile=profile)
         arrival = playback.arrival_time(route.ends[1])

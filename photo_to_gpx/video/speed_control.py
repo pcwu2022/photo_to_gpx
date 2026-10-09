@@ -3,13 +3,13 @@ from dataclasses import replace
 from bisect import bisect_right
 import math
 
-from travel_route import GEOD
-from video_map import project_positions, flight_camera_track, overview_pose
+from .travel_route import GEOD
+from .video_map import project_positions, flight_camera_track, overview_pose
 
 
 class SpeedProfile:
     def __init__(self, route, motion_seconds, size, fps, *, camera="fly", camera_seconds=0.6,
-                 local_span_km=25, flight_km=150, city_km=5, min_speed_mps=1000,
+                 local_span_km=12.5, flight_km=150, city_km=5, min_speed_mps=2000,
                  # max_screen_speed_px=540, max_zoom_rate=1):  # Restore upper cap.
                  max_screen_speed_px=0, max_zoom_rate=0):
         values = (min_speed_mps, max_screen_speed_px, max_zoom_rate)
