@@ -67,7 +67,7 @@ This mode intentionally changes relative interval lengths to limit long gaps, bu
 
 ## Animation speed limits
 
-Defaults are **1,000 ground metres per animation second** (`--min-speed-mps 1000`) and **180 screen pixels per second** (`--max-screen-speed-px 180`). These are playback speeds, separate from the real-world `--max-speed-kmh` GPS plausibility check. The floor is independent of zoom: shorten a slow moving interval until its ground speed reaches the configured minimum. A same-location photo gap collapses to one frame of stationary motion rather than a long idle period. Arrival waits and the final overview remain separate.
+Defaults are **1,000 ground metres per animation second** (`--min-speed-mps 1000`) and **540 screen pixels per second** (`--max-screen-speed-px 540`). These are playback speeds, separate from the real-world `--max-speed-kmh` GPS plausibility check. The floor is independent of zoom: shorten a slow moving interval until its ground speed reaches the configured minimum. A same-location photo gap collapses to one frame of stationary motion rather than a long idle period. Arrival waits and the final overview remain separate.
 
 The ceiling depends on the planned viewport: a pixel represents more ground distance at wider zoom, permitting faster planes while limiting vehicles in a local view. Calculate it using Web Mercator displacement, viewport size, camera translation, and zoom changes, with a small safety margin. The camera pulls back early on transfers outside the city threshold, rather than chasing a fast vehicle at street-level zoom. `--max-zoom-rate 1` additionally limits zoom changes to one doubling/halving per second. Local framing automatically widens if necessary to fit the requested floor and screen ceiling.
 
@@ -95,9 +95,11 @@ Automatic encoding probes actual one-frame H.264 encodes with NVENC, QSV, and Vi
 
 ## Photo markers
 
-Each accepted photo appears in a **circular, center-cropped thumbnail** with a white rim, soft shadow, small timestamp, and a pointer to its geographic location. Images honor EXIF orientation. Every marker stays available for the rest of the video, and multiple images coexist. A marker may move outside the current viewport as the camera travels; it returns when its location comes back into view.
+Each accepted photo appears in a **circular, center-cropped thumbnail** with a white rim, soft shadow, and small timestamp. The circle center is its exact EXIF geographic location. Images honor EXIF orientation. Every marker stays available for the rest of the video, and multiple images coexist. A marker may move outside the current viewport as the camera travels; it returns when its location comes back into view.
 
-Each circle uses a stable offset from its projected geographic anchor, so it follows the map when the camera pans or zooms. Initial placement favors space clear of the vehicle and nearby photos. During the final zoom-out, the circles spread into non-overlapping slots across the map, connected to their actual locations by pointers. This makes the complete photo collection visible even when many photos share one place. Leaders draw behind circles, and the vehicle draws last.
+Photo sizes are fixed in projected map units. At the closest camera zoom anywhere in the video, each circle has a diameter of **one-tenth of the screen width** (192 pixels at 1920×1080). Zooming out by a factor of two halves the circle diameter; its shadow and label scale with it. Photo centers, sizes, and the background use the same camera transform throughout the journey and final overview. There are no screen offsets or final-layout rearrangements. The vehicle draws last.
+
+All photos remain registered at their locations. At wide zoom levels, thumbnails can become subpixel-sized and nearby photos can overlap; rasterization uses at least one pixel without moving the geographic anchor. The overview preserves the same geographical placement and map scale rather than promising individually readable thumbnails at global zoom. Reports include each marker's latitude/longitude, projected diameter, reference camera width, and overview pixel diameter.
 
 Nearby burst grouping remains in the report (≤30 seconds between consecutive shots, ≤50 m from the cluster anchor, ≤2 minutes overall), but every member receives its own marker. A sprite cache accommodates the persistent marker count. `--no-photos` disables overlays. `photo_display` records raw index, arrival, visible seconds, and full-opacity seconds; expiry is null. `overlay_issues` records decode failures. `arrival_pauses` records every trip and its waiting time. Photos without usable timestamp/GPS data cannot be placed on the map and remain listed in the raw index manifest.
 
@@ -146,8 +148,8 @@ The generated `*.photo-index.json` lists every raw index, relative filename, sel
 
 # Updated test1 video: persistent map photos and raw-index icon ranges.
 .venv/bin/python photos_to_video.py --photos input/test1 --duration 180 \
-  --config vehicles.example.json --min-speed-mps 1000 --max-screen-speed-px 180 \
-  -o sample/test1-speed-limited.mp4
+  --config vehicles.example.json --min-speed-mps 1000 --max-screen-speed-px 540 \
+  -o sample/test1.mp4
 
 .venv/bin/python photos_to_video.py --help
 .venv/bin/python -m unittest test_video -v
@@ -155,4 +157,4 @@ The generated `*.photo-index.json` lists every raw index, relative filename, sel
 
 The adjacent `*.report.json` records frame count, encoder, rendering elapsed time, skipped-photo reasons, long-gap warnings, and each retained photo's animation time, UTC timestamp, coordinates, altitude, and path. Invalid input that prevents rendering is explained on stderr.
 
-The supplied `sample/phase1-demo.mp4` uses synthetic locations near Taipei and a real tiled background. The initial prototype was checked with generated EXIF-bearing JPEGs; the enhanced video uses the subsequently supplied `input/test1` photos. The existing `sample/timeline.json` is left unchanged. The older Phase 1 examples remain available. `sample/test1-speed-limited.mp4` demonstrates the newest features on the supplied real photos; `test1.mp4`, `test1-enhanced.mp4`, `test1-rounded.mp4`, and `test1-persistent.mp4` remain available for comparison. Further optimization should follow profiling rather than adding rendering frameworks.
+`sample/test1.mp4` is the latest render of the supplied `input/test1` photos, with geographically fixed, map-scaled markers and the 540-pixel/second speed ceiling. The adjacent report and raw-photo index describe the render. Local photos, generated videos, and reports are excluded from Git. To create a synthetic demo, use the `--demo` command above.

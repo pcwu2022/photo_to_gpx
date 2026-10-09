@@ -56,7 +56,7 @@ def render(route, output, *, size, fps, duration, cache, offline, plain,
            camera, camera_seconds, vehicle, icon_path, trail, encoder, provider,
            popup_seconds=4, show_photos=True, local_span_km=25, flight_km=150, max_tiles=1200,
            long_pause=0.2, short_pause=0.05, city_km=5, overview_seconds=5, overview_hold=5,
-           config=None, min_speed_mps=1000, max_screen_speed_px=180, max_zoom_rate=1):
+           config=None, min_speed_mps=1000, max_screen_speed_px=540, max_zoom_rate=1):
     video_seconds = duration or route.duration
     motion_count = max(2, round(video_seconds * fps))
     motion_seconds = (motion_count - 1) / fps
@@ -112,6 +112,7 @@ def render(route, output, *, size, fps, duration, cache, offline, plain,
                 cameras[i] = pose
     speed_measurements = (profile.measure(positions, points, cameras, size, fps) if profile else {})
     append_overview(cameras, round(overview_start * fps), final_pose, round(overview_seconds * fps))
+    markers.set_reference_span(min(pose[2] for pose in cameras))
     map_canvas = FlightMapCanvas(points, cameras, size, cache=cache, offline=offline, plain=plain,
                                  trail=trail, provider=provider, max_tiles=max_tiles,
                                  draw_points=draw_points, draw_times=draw_times)
@@ -152,13 +153,8 @@ def render(route, output, *, size, fps, duration, cache, offline, plain,
                     frame, (x, y) = map_canvas.frame(point, index, position.animation_time)
                     if show_photos:
                         screen = lambda p: map_canvas.screen(p, index)
-                        u = max(0, min(1, (index / fps - overview_start) / overview_seconds))
-                        blend = u * u * (3 - 2 * u)
-                        cx, cy, sx, sy = final_pose
-                        final_screen = lambda p: ((p[0] - cx) / sx * size[0] + size[0] / 2,
-                                                   (cy - p[1]) / sy * size[1] + size[1] / 2)
                         markers.draw(frame, index / fps, screen, cameras[index][0], (x, y),
-                                     overview=blend, overview_screen=final_screen)
+                                     span_m=cameras[index][2])
                     # Project the true bearing locally to account for map convergence.
                     ahead_lon, ahead_lat, _ = GEOD.fwd(position.longitude, position.latitude, position.heading, 20)
                     local_lon = point[0] / 6378137 * 180 / math.pi
@@ -224,6 +220,11 @@ def render(route, output, *, size, fps, duration, cache, offline, plain,
             "vehicle_ranges": config.ranges, "default_icon": config.default,
             "segment_icons": [{"destination_raw_index": s[1].raw_index,
                                "icon": config.for_photo(s[1].raw_index)} for s in route.segments],
+            "photo_marker_placement": "geographic",
+            "photo_reference_camera_span_m": markers.reference_span_m,
+            "photo_world_diameter_m": markers.world_diameter_m,
+            "photo_closest_zoom_diameter_px": size[0] / 10,
+            "photo_overview_diameter_px": markers.world_diameter_m / final_pose[2] * size[0],
             "photo_clusters": len(markers.groups), "overlay_issues": markers.issues,
             "photo_display": markers.report(fps) if show_photos else [],
             "photo_events": [{"video_seconds": playback.arrival_time(t),
@@ -265,7 +266,7 @@ def main():
     parser.add_argument("--city-km", type=float, default=5)
     parser.add_argument("--min-speed-mps", type=float, default=1000,
                         help="Minimum ground metres per animation second; 0 disables")
-    parser.add_argument("--max-screen-speed-px", type=float, default=180,
+    parser.add_argument("--max-screen-speed-px", type=float, default=540,
                         help="Maximum pixels per animation second, accounting for zoom and camera motion; 0 disables")
     parser.add_argument("--max-zoom-rate", type=float, default=1,
                         help="Maximum camera zoom octaves per second; 0 disables")

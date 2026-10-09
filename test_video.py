@@ -66,8 +66,8 @@ class VideoChecks(unittest.TestCase):
         points = project_positions(positions)
         cameras = [profile.camera_at(p.animation_time) for p in positions]
         measured = profile.measure(positions, points, cameras, (640, 360), 30)
-        self.assertLessEqual(measured["maximum_world_screen_px_per_second"], 180)
-        self.assertLessEqual(measured["maximum_vehicle_screen_px_per_second"], 180)
+        self.assertLessEqual(measured["maximum_world_screen_px_per_second"], 540)
+        self.assertLessEqual(measured["maximum_vehicle_screen_px_per_second"], 540)
         self.assertLessEqual(measured["maximum_zoom_octaves_per_second"], 1.001)
         self.assertGreaterEqual(measured["minimum_moving_ground_mps"], 999)
 
@@ -272,7 +272,7 @@ class VideoChecks(unittest.TestCase):
         cameras = flight_camera_track(points, positions, route, (640, 360), 30, city_km=5)
         self.assertTrue(all(c == cameras[0] for c in cameras))
 
-    def test_future_trail_hidden_and_marker_moves_with_map(self):
+    def test_future_trail_hidden_and_marker_fixed_at_geographic_center(self):
         points = [(0, 0), (1000, 0), (2000, 0)]
         canvas = MapCanvas(points, (640, 360), cache="unused", plain=True,
                            draw_points=points, draw_times=[0, 1, 2])
@@ -286,14 +286,36 @@ class VideoChecks(unittest.TestCase):
             markers = PhotoMarkers([(0, photos[0])], 1, 1, (640, 360))
             first = Image.new("RGB", (640, 360))
             markers.draw(first, 1, lambda p: (320, 180), 0, (100, 100))
-            offset = markers.offsets[0]
+            self.assertEqual(markers.geometry(0, lambda p: (320, 180), 0)[0], (320, 180))
+            self.assertEqual(first.getpixel((320, 180)), (0, 0, 254))
             markers.draw(Image.new("RGB", (640, 360)), 20,
                          lambda p: (420, 180), 0, (100, 100))
-            self.assertEqual(markers.offsets[0], offset)
-            markers.plan_overview(lambda p: (320, 180), 0)
+            self.assertEqual(markers.geometry(0, lambda p: (420, 180), 0)[0], (420, 180))
             count = markers.draw(Image.new("RGB", (640, 360)), 30,
-                                 lambda p: (320, 180), 0, (100, 100), overview=1)
+                                 lambda p: (320, 180), 0, (100, 100), span_m=6400)
             self.assertEqual(count, 1)
+
+    def test_photo_geometry_scales_with_map_and_preserves_projected_location(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            write_test_photo(path / "photo.jpg", "2026:07:26 09:00:00")
+            photos, _ = scan_photos(path)
+            markers = PhotoMarkers([(0, photos[0])], 1, 1, (1920, 1080))
+            markers.set_reference_span(40000)
+            ax, ay = markers.anchor(0, 0)
+            for span in (40000, 80000, 160000, 40000000):
+                cx, cy = ax - 4000, ay + 2000
+                screen = lambda p: ((p[0] - cx) / span * 1920 + 960,
+                                    (cy - p[1]) / (span * 1080 / 1920) * 1080 + 540)
+                center, diameter = markers.geometry(0, screen, cx, span)
+                recovered = (cx + (center[0] - 960) / 1920 * span,
+                             cy - (center[1] - 540) / 1920 * span)
+                self.assertAlmostEqual(recovered[0], ax)
+                self.assertAlmostEqual(recovered[1], ay)
+                self.assertAlmostEqual(diameter * span / 1920, 4000)
+                self.assertEqual(markers.draw(Image.new("RGB", (1920, 1080)), 10,
+                                              screen, cx, span_m=span), 1)
+            self.assertEqual(markers.geometry(0, lambda p: (960, 540), ax, 40000)[1], 192)
 
 
 if __name__ == "__main__":

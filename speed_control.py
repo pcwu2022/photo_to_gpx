@@ -10,7 +10,7 @@ from video_map import project_positions, flight_camera_track, overview_pose
 class SpeedProfile:
     def __init__(self, route, motion_seconds, size, fps, *, camera="fly", camera_seconds=0.6,
                  local_span_km=25, flight_km=150, city_km=5, min_speed_mps=1000,
-                 max_screen_speed_px=180, max_zoom_rate=1):
+                 max_screen_speed_px=540, max_zoom_rate=1):
         values = (min_speed_mps, max_screen_speed_px, max_zoom_rate)
         if not all(math.isfinite(v) and v >= 0 for v in values):
             raise ValueError("animation speed limits must be finite and nonnegative")
