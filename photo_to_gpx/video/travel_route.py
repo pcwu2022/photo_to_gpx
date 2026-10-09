@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import math
+import re
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from PIL import Image
@@ -100,8 +101,16 @@ def raw_photo_paths(folder):
     folder = Path(folder)
     if not folder.is_dir():
         raise ValueError(f"photo directory does not exist: {folder}")
+    def natural_key(path):
+        relative = path.relative_to(folder).as_posix()
+        # Compare numeric runs as integers: 2.jpg precedes 10.jpg. The original
+        # path breaks ties (e.g. 01.jpg vs 1.jpg) deterministically.
+        parts = tuple((1, int(part)) if part.isascii() and part.isdigit() else (0, part)
+                      for part in re.split(r"([0-9]+)", relative))
+        return parts, relative
+
     return sorted((p for p in folder.rglob("*") if p.is_file() and p.suffix.lower() in EXTENSIONS),
-                  key=lambda p: p.relative_to(folder).as_posix())
+                  key=natural_key)
 
 
 def scan_photos(folder, timezone_name="UTC"):

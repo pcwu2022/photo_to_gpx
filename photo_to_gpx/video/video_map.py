@@ -14,6 +14,8 @@ import urllib.parse
 from PIL import Image, ImageDraw
 from pyproj import Transformer
 
+from .vehicle_icons import vehicle_icon
+
 EXTENT = 20037508.342789244
 TILE_URL = "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"
 ESRI_URL = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}"
@@ -170,34 +172,6 @@ class MapCanvas:
         screen = ((point[0] - cx) / sx * self.size[0] + self.size[0] / 2,
                   (cy - point[1]) / sy * self.size[1] + self.size[1] / 2)
         return frame, screen
-
-
-def vehicle_icon(kind, path=None):
-    """Custom transparent icons should face up/north before rotation."""
-    if path:
-        with Image.open(path) as image:
-            icon = image.convert("RGBA")
-        icon.thumbnail((72, 72), Image.Resampling.LANCZOS)
-        return icon
-    icon = Image.new("RGBA", (48, 72))
-    draw = ImageDraw.Draw(icon)
-    if kind == "plane":
-        draw.polygon([(24, 1), (29, 28), (46, 44), (46, 51), (28, 43),
-                      (28, 60), (36, 68), (36, 71), (24, 67), (12, 71),
-                      (12, 68), (20, 60), (20, 43), (2, 51), (2, 44), (19, 28)],
-                     fill="#f4f7fa", outline="#23313d", width=2)
-        draw.line((24, 12, 24, 61), fill="#e84553", width=3)
-        return icon
-    if kind == "car":
-        for x in (3, 35):
-            for y in (13, 48):
-                draw.rounded_rectangle((x, y, x + 10, y + 13), radius=3, fill="#23313d")
-    draw.rounded_rectangle((9, 2, 39, 69), radius=10, fill="#e84553", outline="white", width=2)
-    draw.rounded_rectangle((14, 14, 34, 30), radius=3, fill="#b7e4f2")
-    draw.rectangle((14, 45, 34, 53), fill="#23313d")
-    if kind == "train":
-        draw.line((15, 61, 33, 61), fill="white", width=3)
-    return icon
 
 
 def flight_camera_track(points, positions, route, size, fps, smoothing=0.6,

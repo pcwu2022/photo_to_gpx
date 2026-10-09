@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="72" viewBox="0 0 48 72">
+  <title>North-facing car</title>
+  <rect x="3" y="13" width="10" height="13" rx="3" fill="#23313d" />
+  <rect x="3" y="48" width="10" height="13" rx="3" fill="#23313d" />
+  <rect x="35" y="13" width="10" height="13" rx="3" fill="#23313d" />
+  <rect x="35" y="48" width="10" height="13" rx="3" fill="#23313d" />
+  <rect x="9" y="2" width="30" height="67" rx="10" fill="#e84553" stroke="white" stroke-width="2" />
+  <rect x="14" y="14" width="20" height="16" rx="3" fill="#b7e4f2" />
+  <rect x="14" y="45" width="20" height="8" rx="0" fill="#23313d" />
+</svg>

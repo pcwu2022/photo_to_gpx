@@ -1,6 +1,6 @@
 # Photo travel video
 
-A local Python tool that turns timestamped GPS photos into an H.264 MP4 with a moving car, train, or plane, smooth flight camera transitions, rounded local turns, fixed arrival pauses, a ground-speed floor and zoom-dependent screen-speed ceiling, persistent circular photo markers, and a final overview of every accepted photo. Defaults: **1920×1080, 30 FPS**, **90 seconds of baseline motion**, retimed by speed limits, plus arrival pauses and a 10-second overview, elapsed-time-based playback, and the flying camera.
+A local Python tool that turns timestamped GPS photos into an H.264 MP4 with a moving car, train, plane, or boat, smooth flight camera transitions, rounded local turns, fixed arrival pauses, a ground-speed floor and zoom-dependent screen-speed ceiling, persistent circular photo markers, and a final overview of every accepted photo. Defaults: **1920×1080, 30 FPS**, **90 seconds of baseline motion**, retimed by speed limits, plus arrival pauses and a 10-second overview, elapsed-time-based playback, and the flying camera.
 
 ## Assessment and reuse
 
@@ -14,7 +14,7 @@ A local Python tool that turns timestamped GPS photos into an H.264 MP4 with a m
 
 ## Stack and data flow
 
-**Pillow**, **PyProj**, **imageio-ffmpeg**, and **tqdm** are required. No GeoPandas/Shapely/Matplotlib dependency is necessary for a sequence of geodesic segments and raster sprites. FFmpeg is supplied by imageio-ffmpeg's wheel on supported platforms; `IMAGEIO_FFMPEG_EXE` can select a system binary.
+**Pillow**, **PyProj**, **imageio-ffmpeg**, **tqdm**, and **CairoSVG** are required. No GeoPandas/Shapely/Matplotlib dependency is necessary for a sequence of geodesic segments and raster sprites. FFmpeg is supplied by imageio-ffmpeg's wheel on supported platforms; `IMAGEIO_FFMPEG_EXE` can select a system binary.
 
 ```mermaid
 flowchart LR
@@ -52,7 +52,11 @@ photo_to_gpx/
     ├── playback.py
     ├── speed_control.py
     ├── photo_markers.py
-    └── vehicle_config.py
+    ├── vehicle_config.py
+    └── vehicle_icons.py
+photo_to_gpx/assets/icons/   # Editable car, train, plane, and boat SVGs
+photo_to_gpx/tools/
+└── export_icons.py          # Regenerate built-in SVG artwork
 tests/
 └── test_video.py
 ```
@@ -152,11 +156,25 @@ Use `--config vehicles.example.json` to select icons by raw photo index:
 }
 ```
 
-Indices are **1-based and inclusive**, assigned to all supported image files in the directory recursively, sorted by case-sensitive relative filename, **before metadata filtering or chronological sorting**. Images missing GPS or timestamps still count. Non-image files do not count. Later rules win when ranges overlap, so index 5 above selects `plane`. Unspecified indices use `default_icon`, or `--vehicle` if the JSON omits it (default `car`).
+Indices are **1-based and inclusive**, assigned to all supported image files in the directory recursively, sorted by case-sensitive relative filename in natural numeric order (`1.jpg`, `2.jpg`, …, `10.jpg`), **before metadata filtering or chronological sorting**. Images missing GPS or timestamps still count. Non-image files do not count. Later rules win when ranges overlap, so index 5 above selects `plane`. Unspecified indices use `default_icon`, or `--vehicle` if the JSON omits it (default `car`).
 
-Each travel leg uses the icon selected for its destination photo's raw index; at a photo arrival and its pause, that photo's icon is used. Available built-ins are `car`, `train`, and `plane`. For a custom north-facing transparent image, add an entry such as `"icons": {"boat": "icons/boat.png"}` and use `"icon": "boat"` in a range. Image paths resolve relative to the JSON file.
+Each travel leg uses the icon selected for its destination photo's raw index; at a photo arrival and its pause, that photo's icon is used. Available built-ins are `car`, `train`, `plane`, and `boat`. Use `--vehicle boat` for a boat by default, or `"icon": "boat"` in a JSON range. For a custom north-facing transparent SVG or raster image, add an entry such as `"icons": {"ferry": "icons/ferry.png"}` and use `"icon": "ferry"` in a range. Image paths resolve relative to the JSON file.
 
 The generated `*.photo-index.json` lists every raw index, relative filename, selected icon, whether it became a route anchor/photo event, and any skip reason. Consult this manifest when editing ranges. `vehicles.example.json` illustrates the requested ranges; its assignments do not infer actual transport modes from the photos.
+
+## Editable SVG icons
+
+Built-in artwork lives in `photo_to_gpx/assets/icons/car.svg`, `train.svg`, `plane.svg`, and `boat.svg`. Edit these files to change the built-in icons. The renderer reads them directly through `vehicle_icons.py`, rasterizes each once using CairoSVG, and caches rotations during rendering. Icons face north/up and have a transparent background. Custom SVG files also work with `--icon` and the JSON `icons` mapping; PNG and other Pillow-supported formats remain supported.
+
+Generate all four SVGs from the original vector definitions:
+
+```bash
+.venv/bin/python -m photo_to_gpx.tools.export_icons
+# Export elsewhere instead of replacing the renderer's assets:
+.venv/bin/python -m photo_to_gpx.tools.export_icons --output-dir /tmp/vehicle-icons
+```
+
+Regenerating the default directory replaces any edits to those SVG files. On Linux, CairoSVG requires the system Cairo library (typically `libcairo2`).
 
 ## Run
 

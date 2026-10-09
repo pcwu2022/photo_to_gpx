@@ -1,0 +1,7 @@
+{
+  "default_icon": "train",
+  "icons": {},
+  "ranges": [
+    {"start": 1, "end": 2, "icon": "plane"}
+  ]
+}

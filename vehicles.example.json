@@ -1,8 +1,0 @@
-{
-  "default_icon": "car",
-  "icons": {},
-  "ranges": [
-    {"start": 3, "end": 5, "icon": "train"},
-    {"start": 5, "end": 10, "icon": "plane"}
-  ]
-}

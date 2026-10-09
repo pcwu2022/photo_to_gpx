@@ -1,0 +1,12 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="72" viewBox="0 0 48 72">
+  <title>North-facing boat</title>
+  <line x1="10" y1="66" x2="7" y2="71" stroke="#b7e4f2" stroke-width="3" />
+  <line x1="24" y1="66" x2="24" y2="71" stroke="#b7e4f2" stroke-width="3" />
+  <line x1="38" y1="66" x2="41" y2="71" stroke="#b7e4f2" stroke-width="3" />
+  <polygon points="24,2 38,20 42,51 36,64 12,64 6,51 10,20" fill="#e84553" stroke="white" stroke-width="2" />
+  <polygon points="24,10 32,24 35,53 13,53 16,24" fill="#f4f7fa" />
+  <rect x="17" y="28" width="14" height="18" rx="3" fill="#23313d" />
+  <rect x="19" y="30" width="10" height="6" rx="2" fill="#b7e4f2" />
+  <rect x="18" y="55" width="12" height="4" rx="0" fill="#23313d" />
+</svg>

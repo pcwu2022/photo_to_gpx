@@ -16,7 +16,8 @@ from PIL import Image, ImageDraw
 from tqdm import tqdm
 
 from .travel_route import GEOD, Route, demo_route, load_gpx, scan_photos, raw_photo_paths
-from .video_map import PROJECT, project_positions, vehicle_icon
+from .video_map import PROJECT, project_positions
+from .vehicle_icons import vehicle_icon
 from .video_map import FlightMapCanvas, flight_camera_track, overview_pose, append_overview
 from .photo_markers import PhotoMarkers
 from .playback import Playback
@@ -283,8 +284,8 @@ def main():
     parser.add_argument("--turn-radius-m", type=float, default=1000, help="Local corner smoothing radius; 0 disables curves")
     parser.add_argument("--no-photos", action="store_true")
     parser.add_argument("--camera-seconds", type=float, default=0.6)
-    parser.add_argument("--vehicle", choices=["car", "train", "plane"], default="car")
-    parser.add_argument("--icon", type=Path, help="Transparent image facing up/north")
+    parser.add_argument("--vehicle", choices=["car", "train", "plane", "boat"], default="car")
+    parser.add_argument("--icon", type=Path, help="Transparent SVG or raster image facing up/north")
     parser.add_argument("--no-trail", action="store_true")
     parser.add_argument("--encoder", default="auto", help="auto, libx264, h264_nvenc, h264_qsv, etc.; software fallback")
     args = parser.parse_args()

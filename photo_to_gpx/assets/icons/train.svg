@@ -1,0 +1,16 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="72" viewBox="0 0 48 72">
+  <title>North-facing metro train</title>
+  <!-- Overhead metro car with a rounded driving cab and roof ventilation. -->
+  <rect x="20" y="65" width="8" height="6" rx="2" fill="#23313d" />
+  <path d="M 8,18 Q 8,3 24,3 Q 40,3 40,18 V 64 Q 40,68 36,68 H 12 Q 8,68 8,64 Z" fill="#f4f7fa" stroke="#23313d" stroke-width="2" />
+  <path d="M 11,19 Q 11,6 24,6 Q 37,6 37,19 V 25 H 11 Z" fill="#e84553" />
+  <path d="M 13,15 Q 24,9 35,15 L 33,22 H 15 Z" fill="#b7e4f2" stroke="#23313d" stroke-width="2" stroke-linejoin="round" />
+  <path d="M 11,28 V 63 M 37,28 V 63" stroke="#e84553" stroke-width="3" />
+  <path d="M 14,26 H 18 M 30,26 H 34" stroke="white" stroke-width="2" stroke-linecap="round" />
+  <rect x="17" y="32" width="14" height="12" rx="2" fill="#23313d" />
+  <path d="M 20,35 H 28 M 20,38 H 28 M 20,41 H 28" stroke="#b7e4f2" stroke-width="1" />
+  <rect x="17" y="49" width="14" height="12" rx="2" fill="#23313d" />
+  <path d="M 20,52 H 28 M 20,55 H 28 M 20,58 H 28" stroke="#b7e4f2" stroke-width="1" />
+  <path d="M 15,65 H 33" stroke="#e84553" stroke-width="2" />
+</svg>

@@ -1,0 +1,14 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="72" viewBox="0 0 48 72">
+  <title>North-facing bullet train</title>
+  <!-- Overhead high-speed train with a long tapered nose and roof equipment. -->
+  <rect x="20" y="65" width="8" height="6" rx="2" fill="#23313d" />
+  <path d="M 24,2 C 20,2 10,21 9,34 L 9,64 Q 9,68 13,68 H 35 Q 39,68 39,64 L 39,34 C 38,21 28,2 24,2 Z" fill="#f4f7fa" stroke="#23313d" stroke-width="2" />
+  <path d="M 12,36 V 64 M 36,36 V 64" stroke="#e84553" stroke-width="3" />
+  <path d="M 15,29 Q 24,24 33,29 L 31,36 Q 24,33 17,36 Z" fill="#b7e4f2" stroke="#23313d" stroke-width="2" stroke-linejoin="round" />
+  <path d="M 24,8 V 21" stroke="#e84553" stroke-width="2" stroke-linecap="round" />
+  <rect x="18" y="42" width="12" height="9" rx="2" fill="#23313d" />
+  <path d="M 20,45 H 28 M 20,48 H 28" stroke="#b7e4f2" stroke-width="1" />
+  <path d="M 24,54 30,59 24,64 18,59 Z" fill="none" stroke="#23313d" stroke-width="2" stroke-linejoin="round" />
+  <path d="M 17,59 H 31" stroke="#23313d" stroke-width="2" stroke-linecap="round" />
+</svg>

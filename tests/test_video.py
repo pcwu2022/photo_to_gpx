@@ -8,7 +8,7 @@ from pathlib import Path
 from PIL import Image
 from PIL.TiffImagePlugin import IFDRational as Rational
 
-from photo_to_gpx.video.travel_route import GEOD, Photo, Route, demo_route, scan_photos
+from photo_to_gpx.video.travel_route import GEOD, Photo, Route, demo_route, scan_photos, raw_photo_paths
 from photo_to_gpx.video.video_map import MapCanvas, project_positions, flight_camera_track, FlightMapCanvas
 from photo_to_gpx.video.photo_markers import PhotoMarkers
 from photo_to_gpx.video.playback import Playback
@@ -317,6 +317,31 @@ class VideoChecks(unittest.TestCase):
         straight = Route(photos).at(route.ends[1] * 0.75)
         curved = route.at(route.ends[1] * 0.75)
         self.assertGreater(GEOD.inv(straight.longitude, straight.latitude, curved.longitude, curved.latitude)[2], 10)
+
+    def test_numeric_photo_names_match_raw_icon_range_indices(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            # Most files lack GPS, but they must still count toward every index.
+            for index in range(1, 276):
+                Image.new("RGB", (1, 1)).save(folder / f"{index}.jpg")
+            for hour, index in enumerate((2, 190, 261, 271, 275)):
+                write_test_photo(folder / f"{index}.jpg", f"2026:07:26 {hour:02d}:00:00")
+            ordered = raw_photo_paths(folder)
+            self.assertEqual([p.name for p in ordered], [f"{i}.jpg" for i in range(1, 276)])
+            photos, issues = scan_photos(folder)
+            self.assertEqual([p.raw_index for p in photos], [2, 190, 261, 271, 275])
+            self.assertEqual(len(issues), 270)
+            config_path = folder / "vehicles.json"
+            config_path.write_text(json.dumps({"default_icon": "train", "ranges": [
+                {"start": 1, "end": 2, "icon": "plane"},
+                {"start": 190, "end": 261, "icon": "boat"},
+                {"start": 271, "end": 275, "icon": "plane"}]}))
+            config = VehicleConfig(config_path)
+            self.assertEqual([config.for_photo(p.raw_index) for p in photos],
+                             ["plane", "boat", "boat", "plane", "plane"])
+            self.assertEqual(config.for_photo(189), "train")
+            self.assertEqual(config.for_photo(262), "train")
+            self.assertEqual(config.for_photo(270), "train")
 
     def test_raw_index_counts_missing_gps_and_range_overlap(self):
         with tempfile.TemporaryDirectory() as directory:
