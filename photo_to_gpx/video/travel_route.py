@@ -1,5 +1,5 @@
 """Photo records and a compressed, WGS84 geodesic animation timeline."""
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import math
@@ -25,6 +25,7 @@ class Photo:
     altitude: float | None = None
     raw_index: int | None = None
     local_timestamp: datetime | None = None
+    timestamp_source: str = "provided"
 
 
 def validate_point(photo):
@@ -52,6 +53,40 @@ def gps_coordinate(dms, ref):
     return dms_to_decimal(dms, ref)
 
 
+def gps_capture_timezone(local, gps):
+    """Recover a missing capture offset from the full GPS UTC date and time."""
+    if not gps.get(29) or not gps.get(7):
+        return None
+    try:
+        date = datetime.strptime(text(gps[29]), "%Y:%m:%d").replace(tzinfo=timezone.utc)
+        hours, minutes, seconds = map(float, gps[7])
+        if not (all(math.isfinite(v) for v in (hours, minutes, seconds))
+                and 0 <= hours < 24 and 0 <= minutes < 60 and 0 <= seconds < 61):
+            return None
+        utc = date + timedelta(hours=hours, minutes=minutes, seconds=seconds)
+        difference = (local - utc.replace(tzinfo=None)).total_seconds()
+        # Modern offsets use 15-minute increments. GPS clocks may differ from
+        # DateTimeOriginal by a second or two; retain capture subseconds.
+        offset = round(difference / 900) * 900
+        if abs(offset) > 14 * 3600 or abs(difference - offset) > 120:
+            return None
+        return timezone(timedelta(seconds=offset))
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def chronological_photos(photos):
+    """Normalize before sorting/arithmetic, including DST fold transitions."""
+    normalized = []
+    for photo in photos:
+        if photo.timestamp.utcoffset() is None:
+            raise ValueError(f"photo timestamp requires a timezone: {photo.path}")
+        normalized.append(replace(photo, timestamp=photo.timestamp.astimezone(timezone.utc),
+                                  local_timestamp=photo.local_timestamp or (
+                                      photo.timestamp if photo.timestamp.tzinfo != timezone.utc else None)))
+    return sorted(normalized, key=lambda p: (p.timestamp, p.path))
+
+
 def extract_photo(path, default_timezone, raw_index=None):
     with Image.open(path) as image:
         exif = image.getexif()
@@ -66,10 +101,17 @@ def extract_photo(path, default_timezone, raw_index=None):
             if not digits.isdigit():
                 raise ValueError("invalid SubSecTimeOriginal")
             local = local.replace(microsecond=int(digits[:6].ljust(6, "0")))
+        gps = exif.get_ifd(0x8825)
         offset = original.get(36881, exif.get(36881))
+        gps_zone = gps_capture_timezone(local, gps) if not offset else None
         if offset:
             local = datetime.fromisoformat(local.isoformat() + text(offset))
+            timestamp_source = "exif_offset"
+        elif gps_zone is not None:
+            local = local.replace(tzinfo=gps_zone)
+            timestamp_source = "gps_utc_offset"
         else:
+            timestamp_source = "fallback_timezone"
             # Refuse ambiguous/nonexistent DST wall times instead of silently guessing.
             candidates = []
             for fold in (0, 1):
@@ -81,7 +123,6 @@ def extract_photo(path, default_timezone, raw_index=None):
             if len(candidates) != 1:
                 raise ValueError("ambiguous/nonexistent local time; EXIF UTC offset required")
             local = candidates[0].astimezone(default_timezone)
-        gps = exif.get_ifd(0x8825)
         if not all(key in gps for key in (1, 2, 3, 4)):
             raise ValueError("missing GPS coordinates or hemisphere references")
         lat_ref, lon_ref = text(gps[1]), text(gps[3])
@@ -93,7 +134,7 @@ def extract_photo(path, default_timezone, raw_index=None):
         return validate_point(Photo(
             local.astimezone(timezone.utc),
             gps_coordinate(gps[2], lat_ref), gps_coordinate(gps[4], lon_ref),
-            str(path.resolve()), altitude, raw_index, local,
+            str(path.resolve()), altitude, raw_index, local, timestamp_source,
         ))
 
 
@@ -127,7 +168,7 @@ def scan_photos(folder, timezone_name="UTC"):
             photos.append(extract_photo(path, zone, index))
         except Exception as error:
             issues.append({"path": str(path), "raw_index": index, "reason": str(error)})
-    return sorted(photos, key=lambda p: (p.timestamp, p.path)), issues
+    return chronological_photos(photos), issues
 
 
 def load_gpx(path):
@@ -175,7 +216,7 @@ class Route:
         self.photos, self.issues = [], []
         self.events = []  # retained photo events, including colocated timestamp bursts
         self.segments, self.ends = [], [0.0]
-        for photo in sorted(photos, key=lambda p: (p.timestamp, p.path)):
+        for photo in chronological_photos(photos):
             validate_point(photo)
             if not self.photos:
                 self.photos.append(photo)

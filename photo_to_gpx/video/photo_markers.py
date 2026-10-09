@@ -13,7 +13,7 @@ class PhotoMarkers:
     FADE_IN = 0.18
 
     def __init__(self, events, route_duration, motion_seconds, size, *, duration=4,
-                 cluster_seconds=30, cluster_meters=50, arrival_time=None, fps=30):
+                 cluster_seconds=30, cluster_meters=50, arrival_time=None, photo_arrival_time=None, fps=30):
         self.duration, self.size = duration, size
         self.cache, self.scaled_cache, self.issues = OrderedDict(), OrderedDict(), []
         self.groups, self.entries = [], []
@@ -22,7 +22,8 @@ class PhotoMarkers:
             if not Path(photo.path).is_file():
                 continue
             # Even sub-frame arrivals get an entire minimum visibility window.
-            start = math.ceil(convert(t) * fps - 1e-8) / fps
+            arrival = photo_arrival_time(t, photo) if photo_arrival_time else convert(t)
+            start = math.ceil(arrival * fps - 1e-8) / fps
             event = (start, photo)
             if self.groups:
                 group = self.groups[-1]
@@ -39,7 +40,7 @@ class PhotoMarkers:
             self.entries.append((start, math.inf, photo))
         self.starts = [e[0] for e in self.entries]
         self.peak = max(1, len(self.entries))
-        self.diameter = max(1, round(size[0] / 10))
+        self.diameter = max(1, round(size[0] / 5))
         self.set_reference_span(size[0])
         self.visible_frames = [0] * len(self.entries)
         self.full_frames = [0] * len(self.entries)
@@ -95,7 +96,7 @@ class PhotoMarkers:
         if not math.isfinite(span_m) or span_m <= 0:
             raise ValueError("photo reference camera span must be finite and positive")
         self.reference_span_m = span_m
-        self.world_diameter_m = span_m / 10
+        self.world_diameter_m = span_m / 5
 
     def geometry(self, index, screen, reference_x, span_m=None):
         center = screen(self.anchor(index, reference_x))

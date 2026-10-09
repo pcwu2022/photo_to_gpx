@@ -4,6 +4,7 @@ import json
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from PIL import Image
 from PIL.TiffImagePlugin import IFDRational as Rational
@@ -29,6 +30,60 @@ def write_test_photo(path, timestamp, offset="+08:00"):
 
 
 class VideoChecks(unittest.TestCase):
+    def test_missing_offset_recovers_gps_utc_date_across_midnight(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "1.jpg"
+            write_test_photo(path, "2026:01:04 08:47:40", offset=None)
+            with Image.open(path) as image:
+                exif = image.getexif()
+                gps = exif.get_ifd(0x8825)
+                gps[29] = "2026:01:03"
+                gps[7] = (Rational(23), Rational(47), Rational(39))
+                exif[0x8825] = gps
+                image.save(path, exif=exif)
+            photos, issues = scan_photos(directory)
+            self.assertFalse(issues)
+            self.assertEqual(photos[0].timestamp,
+                             datetime(2026, 1, 3, 23, 47, 40, 125000, tzinfo=timezone.utc))
+            self.assertEqual(photos[0].local_timestamp.utcoffset(), timedelta(hours=9))
+            self.assertEqual(photos[0].timestamp_source, "gps_utc_offset")
+
+    def test_photos_sort_by_utc_instead_of_filename_or_local_time(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            write_test_photo(folder / "1.jpg", "2026:01:02 08:00:00", "+09:00")
+            write_test_photo(folder / "2.jpg", "2026:01:01 18:30:00", "-05:00")
+            write_test_photo(folder / "3.jpg", "2026:01:01 22:00:00", "+00:00")
+            photos, issues = scan_photos(folder)
+            self.assertFalse(issues)
+            self.assertEqual([p.raw_index for p in photos], [3, 1, 2])
+            route = Route(list(reversed(photos)))
+            self.assertEqual([p.raw_index for p in route.photos], [3, 1, 2])
+            positions = [route.at(route.duration * i / 60) for i in range(61)]
+            self.assertTrue(all(a.timestamp <= b.timestamp for a, b in zip(positions, positions[1:])))
+            self.assertEqual(route.photos[1].timestamp.date().day, 1)
+
+    def test_gpx_utc_records_keep_configured_local_sleep_timezone(self):
+        start = datetime(2026, 1, 1, 15, tzinfo=timezone.utc)
+        photos = [Photo(start, 0, 0, "a"),
+                  Photo(start + timedelta(hours=11), 0, .01, "b")]
+        # UTC dates cross midnight, but both captures are daytime on Jan 1 in New York.
+        route = Route(photos, real_seconds_per_video_second=3600,
+                      sleep_timezone="America/New_York")
+        self.assertEqual(route.duration, 11)
+        self.assertFalse(route.sleep_adjustments)
+
+    def test_dst_fold_route_normalizes_before_sorting_and_interpolation(self):
+        zone = ZoneInfo("America/New_York")
+        # Wall time decreases during the fall DST transition; UTC must increase.
+        first = datetime(2026, 11, 1, 1, 50, tzinfo=zone, fold=0)
+        second = datetime(2026, 11, 1, 1, 10, tzinfo=zone, fold=1)
+        route = Route([Photo(second, 0, .01, "b"), Photo(first, 0, 0, "a")])
+        self.assertEqual([p.path for p in route.photos], ["a", "b"])
+        self.assertEqual((route.photos[1].timestamp - route.photos[0].timestamp).total_seconds(), 1200)
+        self.assertEqual(route.at(route.duration / 2).timestamp,
+                         datetime(2026, 11, 1, 6, tzinfo=timezone.utc))
+
     def test_overnight_sleep_adjustment_and_disable_flag(self):
         start = datetime(2026, 1, 1, 20, tzinfo=timezone.utc)
         photos = [Photo(start, 0, 0, "a"),
@@ -85,6 +140,56 @@ class VideoChecks(unittest.TestCase):
                       real_seconds_per_video_second=3600)
         self.assertEqual(len(route.photos), 2)
         self.assertEqual(route.duration, 3)
+
+    def test_close_photo_spacing_uses_effective_speed_and_holds_at_anchor(self):
+        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        photos = [Photo(start, 0, 0, "a"),
+                  Photo(start + timedelta(hours=1), 0, .001, "b"),
+                  Photo(start + timedelta(hours=2), 0, .02, "c")]
+        route = Route(photos, turn_radius_m=500)
+        profile = SpeedProfile(route, 30, (640, 360), 30)
+        playback = Playback(route, profile.duration, profile=profile, photo_interval=.3)
+        first = playback.photo_arrival_time(0, photos[0])
+        second = playback.photo_arrival_time(route.ends[1], photos[1])
+        self.assertAlmostEqual(second - first, .3)
+        self.assertEqual(playback.route_time(.1), 0)
+        self.assertGreater(playback.route_time(.29), 0)
+        # A leg already taking more than .3 seconds receives no extra photo wait.
+        self.assertEqual(playback.photo_intervals[1]["added_delay_seconds"], 0)
+        self.assertAlmostEqual(playback.photo_intervals[0]["effective_distance_m"],
+                               route.curves[0].lengths[-1])
+        self.assertGreater(playback.photo_intervals[0]["added_delay_seconds"], 0)
+        self.assertEqual(playback.route_time(playback.duration), route.duration)
+
+    def test_same_timestamp_photos_appear_individually_before_departure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+            photos = []
+            for name, stamp, lon in (("a", start, 0), ("b", start, 0),
+                                     ("c", start + timedelta(hours=1), .1)):
+                path = Path(directory) / f"{name}.jpg"
+                Image.new("RGB", (32, 32)).save(path)
+                photos.append(Photo(stamp, 0, lon, str(path)))
+            route = Route(photos)
+            playback = Playback(route, 2, photo_interval=.3)
+            markers = PhotoMarkers(route.events, route.duration, 2, (640, 360),
+                                   photo_arrival_time=playback.photo_arrival_time)
+            self.assertEqual(markers.starts[:2], [0, .3])
+            self.assertEqual(markers.active(.29), [0])
+            self.assertEqual(markers.active(.3), [0, 1])
+            self.assertEqual(playback.route_time(.29), 0)
+            self.assertAlmostEqual(playback.arrival_time(route.duration), 2.3)
+            self.assertEqual(playback.photo_intervals[0]["effective_distance_m"], 0)
+
+    def test_final_timestamp_burst_delays_overview_until_all_photos_arrive(self):
+        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        end = start + timedelta(hours=1)
+        photos = [Photo(start, 0, 0, "a"), Photo(end, 0, .1, "b"), Photo(end, 0, .1, "c")]
+        route = Route(photos)
+        playback = Playback(route, 2, photo_interval=.3)
+        self.assertAlmostEqual(playback.photo_arrival_time(route.duration, photos[-1]), 2.3)
+        self.assertGreater(playback.duration, 2.3)
+        self.assertEqual(playback.route_time(2.2), route.duration)
 
     def test_slow_leg_speed_floor_and_retimed_photo_arrival(self):
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -413,10 +518,10 @@ class VideoChecks(unittest.TestCase):
                              cy - (center[1] - 540) / 1920 * span)
                 self.assertAlmostEqual(recovered[0], ax)
                 self.assertAlmostEqual(recovered[1], ay)
-                self.assertAlmostEqual(diameter * span / 1920, 4000)
+                self.assertAlmostEqual(diameter * span / 1920, 8000)
                 self.assertEqual(markers.draw(Image.new("RGB", (1920, 1080)), 10,
                                               screen, cx, span_m=span), 1)
-            self.assertEqual(markers.geometry(0, lambda p: (960, 540), ax, 40000)[1], 192)
+            self.assertEqual(markers.geometry(0, lambda p: (960, 540), ax, 40000)[1], 384)
 
 
 if __name__ == "__main__":

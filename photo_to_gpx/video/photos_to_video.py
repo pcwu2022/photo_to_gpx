@@ -20,7 +20,7 @@ from .video_map import PROJECT, project_positions
 from .vehicle_icons import vehicle_icon
 from .video_map import FlightMapCanvas, flight_camera_track, overview_pose, append_overview
 from .photo_markers import PhotoMarkers
-from .playback import Playback
+from .playback import Playback, MIN_PHOTO_INTERVAL_SECONDS
 from .vehicle_config import VehicleConfig
 from .speed_control import SpeedProfile
 
@@ -74,9 +74,11 @@ def render(route, output, *, size, fps, duration, cache, offline, plain,
         print(f"Speed limits: {nominal_motion_seconds:.2f}s baseline → {motion_seconds:.2f}s motion; "
               f"{profile.floor_conflicts} intervals limited by the screen/camera ceiling", flush=True)
     playback = Playback(route, motion_seconds, flight_km=flight_km, long_pause=long_pause,
-                        short_pause=short_pause, profile=profile)
+                        short_pause=short_pause, profile=profile,
+                        photo_interval=(math.ceil(MIN_PHOTO_INTERVAL_SECONDS * fps - 1e-8) / fps if show_photos and
+                                        any(Path(p.path).is_file() for _, p in route.events) else 0))
     markers = PhotoMarkers(route.events, route.duration, motion_seconds, size, duration=popup_seconds,
-                           arrival_time=playback.arrival_time, fps=fps)
+                           arrival_time=playback.arrival_time, photo_arrival_time=playback.photo_arrival_time, fps=fps)
     overview_start = math.ceil(playback.duration * fps) / fps
     overview_hold = max(overview_hold, popup_seconds)
     end_seconds = overview_start + overview_seconds + overview_hold
@@ -219,6 +221,9 @@ def render(route, output, *, size, fps, duration, cache, offline, plain,
                              "floor_conflict_intervals": profile.floor_conflicts if profile else 0},
             "speed_segments": profile.legs if profile else [],
             "speed_measurements": speed_measurements,
+            "minimum_photo_interval_seconds": MIN_PHOTO_INTERVAL_SECONDS if show_photos else 0,
+            "effective_minimum_photo_interval_seconds": playback.photo_interval,
+            "photo_intervals": playback.photo_intervals,
             "arrival_pauses": playback.pauses, "arrival_pause_seconds": playback.duration - motion_seconds,
             "overview_start_seconds": overview_start, "overview_transition_seconds": overview_seconds,
             "overview_hold_seconds": overview_hold, "overview_photo_count": len(markers.entries) if show_photos else 0,
@@ -228,11 +233,11 @@ def render(route, output, *, size, fps, duration, cache, offline, plain,
             "photo_marker_placement": "geographic",
             "photo_reference_camera_span_m": markers.reference_span_m,
             "photo_world_diameter_m": markers.world_diameter_m,
-            "photo_closest_zoom_diameter_px": size[0] / 10,
+            "photo_closest_zoom_diameter_px": size[0] / 5,
             "photo_overview_diameter_px": markers.world_diameter_m / final_pose[2] * size[0],
             "photo_clusters": len(markers.groups), "overlay_issues": markers.issues,
             "photo_display": markers.report(fps) if show_photos else [],
-            "photo_events": [{"video_seconds": playback.arrival_time(t),
+            "photo_events": [{"video_seconds": playback.photo_arrival_time(t, photo),
                               **asdict(photo)} for t, photo in route.events]}
 
 
@@ -318,8 +323,12 @@ def main():
             accepted = {p.path for p in route.photos}
             included = {p.path for _, p in route.events}
             valid = {p.path for p in photos}
+            chronology = {p.path: (i, p) for i, p in enumerate(photos, 1)}
             reasons = {str(Path(i["path"]).resolve()): i["reason"] for i in issues if i.get("skipped") is not False}
             manifest = [{"raw_index": i, "path": str(path.relative_to(args.photos)),
+                         "chronological_index": chronology[str(path.resolve())][0] if str(path.resolve()) in chronology else None,
+                         "utc_timestamp": chronology[str(path.resolve())][1].timestamp if str(path.resolve()) in chronology else None,
+                         "timestamp_source": chronology[str(path.resolve())][1].timestamp_source if str(path.resolve()) in chronology else None,
                          "metadata_valid": str(path.resolve()) in valid,
                          "route_anchor": str(path.resolve()) in accepted,
                          "photo_event": str(path.resolve()) in included,
@@ -327,7 +336,7 @@ def main():
                         for i, path in enumerate(raw_photo_paths(args.photos), 1)]
             args.output.parent.mkdir(parents=True, exist_ok=True)
             manifest_path = args.output.with_suffix(".photo-index.json")
-            manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+            manifest_path.write_text(json.dumps(manifest, indent=2, default=str) + "\n")
         for issue in route.issues:
             print(f"{'Warning' if issue.get('skipped') is False else 'Skipped'}: {issue['path']}: {issue['reason']}", file=sys.stderr)
         print(f"Accepted {len(route.photos)} route points, {len(route.events)} photo events", flush=True)
