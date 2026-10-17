@@ -1,6 +1,6 @@
 # Photo travel video
 
-A local Python tool that turns timestamped GPS photos into an H.264 MP4 with a moving car, train, bullet train, plane, boat, or bus, smooth flight camera transitions, rounded local turns, fixed arrival pauses, a ground-speed floor and zoom-dependent screen-speed ceiling, persistent circular photo markers, and a final overview of every accepted photo. Defaults: **1920×1080, 30 FPS**, **90 seconds of baseline motion**, retimed by speed limits, plus arrival pauses and a 10-second overview, elapsed-time-based playback, and the flying camera.
+A local Python tool that turns timestamped GPS photos into an H.264 MP4 with a moving car, train, bullet train, plane, boat, or bus, smooth flight camera transitions, rounded local turns, fixed arrival pauses, a ground-speed floor and zoom-dependent screen-speed ceiling, persistent circular photo markers, and a final overview of every accepted photo. Defaults: **1920×1080, 30 FPS**, **90 seconds of baseline motion**, retimed by speed limits, plus arrival pauses and an 8-second overview, elapsed-time-based playback, and the flying camera.
 
 ## Folder-based workflow
 
@@ -13,6 +13,7 @@ projects/my-trip/
 ├── config.json                 # Input paths and rendering settings
 ├── vehicles.json               # Default icon, custom icons, and photo-index ranges
 ├── photos/                     # Photos, optionally in subfolders
+├── music/                      # Optional soundtracks; select one in config.json
 ├── icons/                      # Optional custom vehicle artwork
 ├── .cache/photo-video/         # Downloaded map tiles, created when needed
 └── output/
@@ -42,7 +43,7 @@ projects/my-trip/
 .venv/bin/python -m photo_to_gpx run projects/test1
 ```
 
-`check` validates settings, vehicle rules, metadata, and route construction, then writes `output/travel.photo-index.json`. Use that index to edit vehicle ranges before rendering. It reports skipped photos and fails if there are too few valid route points. It does not download tiles or probe FFmpeg; those are checked during `run`. `run` creates the video, report, and photo index. Repeated runs replace these generated files; a failed encode preserves the previous video. Omit the folder to use the current directory.
+`check` validates settings, vehicle rules, metadata, soundtrack decoding, and route construction, then writes `output/travel.photo-index.json`. Use that index to edit vehicle ranges before rendering. It reports skipped photos and fails if there are too few valid route points. It does not download tiles or probe video encoders; those are checked during `run`. `run` creates the video, report, and photo index. Repeated runs replace these generated files; a failed encode preserves the previous video. Omit the folder to use the current directory.
 
 For example, these are the main settings to edit in `config.json` (omitted settings use defaults):
 
@@ -67,7 +68,7 @@ For example, these are the main settings to edit in `config.json` (omitted setti
 
 All relative paths resolve from the project folder, including `vehicles`, `photos`, `gpx`, `icon`, `cache`, and `output`. Custom icon paths inside `vehicles.json` resolve from that file's directory. Output and cache paths must remain inside the project. Set `"vehicles": null` to use just the built-in `vehicle` setting without a vehicle rules file. Set `"photos": null` and `"gpx": "trip.gpx"` to use GPX, or `"photos": null` and `"demo": true` for a synthetic route. Exactly one source must be selected.
 
-Other config keys match the renderer's flags with underscores, for example `min_speed_mps`, `turn_radius_m`, and `overview_hold`. The exceptions are `vehicles` for the old vehicle-rules `--config`, and the positive booleans `show_photos`, `trail`, and `sleep_adjustment`. JSON requires numbers and booleans rather than quoted strings; unknown keys and invalid values are errors. The generated config lists every option. See the full flag descriptions with `python -m photo_to_gpx.video.photos_to_video --help`; the technical sections below use those flag names as a reference.
+Other config keys match the renderer's flags with underscores, for example `min_speed_mps`, `turn_radius_m`, and `overview_hold`. The exceptions are `vehicles` for the old vehicle-rules `--config`, and the positive booleans `show_photos`, `show_timeline`, `trail`, and `sleep_adjustment`. JSON requires numbers and booleans rather than quoted strings; unknown keys and invalid values are errors. The generated config lists every option. See the full flag descriptions with `python -m photo_to_gpx.video.photos_to_video --help`; the technical sections below use those flag names as a reference.
 
 A small, fully offline demo project is included:
 
@@ -77,6 +78,28 @@ A small, fully offline demo project is included:
 ```
 
 The original flag-based CLI and converter module commands remain available for existing scripts.
+
+## Music, titles, photo animations, and dates
+
+Copy an audio file into a project's `music/` folder, then select it in `config.json`:
+
+```json
+{
+  "music": "music/song.mp3",
+  "music_timing": "music",
+  "title": "NEW YORK",
+  "subtitle": "2026 FALL",
+  "overview_hold": 4,
+  "photo_animation_seconds": 0.4,
+  "show_timeline": true
+}
+```
+
+`music_timing: "music"` fits the complete video, including titles and pauses, to the song without changing the song's speed. `"video"` keeps the normal video timing, looping shorter music or trimming longer music. Leave `music` as `null` for a silent video.
+
+A nonempty `title` adds an opening map overview and a matching closing card. The title and subtitle use bundled Inter in uppercase, a bold title, wide subtitle tracking, crisp white text, and a diffused black shadow. They fade smoothly at both ends. The opening title uses `overview_hold`; `overview_seconds` controls the transition into the journey and back to the ending overview.
+
+Each real photo pops from small to full size over `photo_animation_seconds` (default 0.4), adding that time to its arrival hold. Set it to `0` for immediate photo appearances. Same-timestamp photos each get their own hold. The old top timestamp banner is removed. An optional quiet bottom timeline shows capture dates with two-hour, daily, or monthly ticks and a moving train. Set `show_timeline` to `false` to hide it. See [CONFIG.md](CONFIG.md) for timing interactions, calendar rules, and all defaults.
 
 ## Assessment and reuse
 
@@ -146,7 +169,7 @@ Run module commands from the repository root. Conversion commands remain availab
 
 ## Interpolation and time compression
 
-EXIF `DateTimeOriginal` is mandatory. Nested `OffsetTimeOriginal` and `SubSecTimeOriginal` are read; an explicit EXIF offset takes precedence over `--timezone`. Without an offset, a complete GPS UTC date/time is used to recover the local capture offset (including date rollover and small camera/GPS clock differences). If that is unavailable or inconsistent, the supplied IANA timezone is used (default UTC). Ambiguous or nonexistent daylight-saving wall times are skipped. Traveling across timezones requires correct per-photo EXIF offsets; a single fallback timezone cannot infer them. HEIC requires a separately installed/registered Pillow decoder; unsupported images are reported as skipped.
+EXIF `DateTimeOriginal` is mandatory. Nested `OffsetTimeOriginal` and `SubSecTimeOriginal` are read; an explicit EXIF offset takes precedence over `--timezone`. Without an offset, a complete GPS UTC date/time is used to recover the local capture offset (including date rollover and small camera/GPS clock differences). If that is unavailable or inconsistent, the supplied IANA timezone is used (default America/New_York). Ambiguous or nonexistent daylight-saving wall times are skipped. Traveling across timezones requires correct per-photo EXIF offsets; a single fallback timezone cannot infer them. HEIC requires a separately installed/registered Pillow decoder; unsupported images are reported as skipped.
 
 Records normalize to UTC before sorting and interpolation, including DST fold transitions, and sort by UTC time, then path for deterministic ties. Coordinate ranges and DMS values are validated. Same-time photos within 50 m retain individual photo events but share one route anchor. Same-time locations farther apart are reported as conflicts and skipped. Segments exceeding `--max-speed-kmh` (CLI default 1,200) are rejected relative to the previous accepted anchor; raise this threshold for flights. This is a conservative plausibility check, not a complete outlier reconstruction algorithm.
 
@@ -158,14 +181,14 @@ By default, subtract **seven hours once per gap** only when all three conditions
 
 `--duration 90` specifies the **baseline movement portion**, before speed limits or pauses; proportional mode defaults to 90 seconds. After every segment, freeze the vehicle and timestamp for a constant wait:
 
-- **0.2 seconds** for distances at or above `--flight-km` (default 150 km), configurable with `--long-pause`.
-- **0.05 seconds** for shorter distances, configurable with `--short-pause`.
+- **0.4 seconds** for distances at or above `--flight-km` (default 150 km), configurable with `--long-pause`.
+- **0.2 seconds** for shorter distances, configurable with `--short-pause`.
 
 Arrival pauses are separate from speed-controlled movement. Photo arrival times include earlier holds but trigger before the pause at their own location. Set both pause parameters to zero to disable arrival pauses. At 30 FPS, these continuous-time waits are quantized to available frames; short waits typically span one or two frames.
 
-Photo appearances are spaced at least **0.3 seconds** apart after speed retiming and existing arrival pauses. If the next movement is too short, the vehicle and map wait at the preceding photo just long enough to supply the missing time. Same-timestamp photos also appear sequentially, and the final overview waits for the last photo. Movement speed and geographic placement remain intact. Change `MIN_PHOTO_INTERVAL_SECONDS` in `photo_to_gpx/video/playback.py` to adjust the interval. The renderer rounds it up to whole frames, so low frame rates also respect the minimum. `--no-photos` skips these extra waits. Reports include `photo_intervals` with effective WGS84/rounded-path distance, actual movement time, original arrival gap, rendered gap, and added delay.
+Photo appearances are spaced at least **0.5 seconds** apart after speed retiming and existing arrival pauses. If the next movement is too short, the vehicle and map wait at the preceding photo just long enough to supply the missing time. Same-timestamp photos also appear sequentially, and the final overview waits for the last photo. Movement speed and geographic placement remain intact. Change `MIN_PHOTO_INTERVAL_SECONDS` in `photo_to_gpx/video/playback.py` to adjust the interval. The renderer rounds it up to whole frames, so low frame rates also respect the minimum. `--no-photos` skips these extra waits. Reports include `photo_intervals` with effective WGS84/rounded-path distance, actual movement time, original arrival gap, rendered gap, and added delay.
 
-Very short real intervals can occupy less than one frame at a compressed frame rate. Photo arrivals round up to the next frame, and every accepted photo persists thereafter. Increase `--duration` to resolve short movements individually. At the end, the camera takes `--overview-seconds` (default 5) to zoom out and holds all photos for `--overview-hold` (default 5). `--popup-seconds` remains available as a minimum final overview hold (default 4); it does not expire markers.
+Very short real intervals can occupy less than one frame at a compressed frame rate. Photo arrivals round up to the next frame, and every accepted photo persists thereafter. Increase `--duration` to resolve short movements individually. At the end, the camera takes `--overview-seconds` (default 3) to zoom out and holds all photos for `--overview-hold` (default 5). `--popup-seconds` remains available as a minimum final overview hold (default 4); it does not expire markers.
 
 The optional `--timing compressed` retains bounded elapsed-time compression:
 
@@ -176,7 +199,7 @@ seconds = clamp((dt / time_scale) ** compression, min_segment, max_segment)
 
 This mode intentionally changes relative interval lengths to limit long gaps, but still uses elapsed time rather than distance to allocate segment durations. Its `--duration` override rescales segments and refuses segments shorter than 0.2 seconds. Min/max/compression settings are ignored by proportional mode.
 
-`Route.at(animation_time)` returns animation seconds, UTC timestamp, latitude, longitude, heading, and segment index. Gaps above `--gap-hours` (default 12) are reported as inferred transfers. Connections do not reconstruct roads, railways, or actual activity during gaps. Local segments shorter than the flight threshold use cubic Bezier curves in an azimuthal equidistant metric projection, with tangent directions shared across adjacent segments. Control distances are bounded by `--turn-radius-m` (default 1,000 m) and 30% of neighboring segment lengths. Every photo anchor remains exact. A sampled arc-length table maintains time-based progress along each curve. Long transfers retain their WGS84 geodesics. `--turn-radius-m 0` disables local curves. The CLI's 1,200 km/h plausibility limit permits ordinary flights; `Route` itself retains the conservative 350 km/h default for callers that do not specify a limit.
+`Route.at(animation_time)` returns animation seconds, UTC timestamp, latitude, longitude, heading, and segment index. Gaps above `--gap-hours` (default 6) are reported as inferred transfers. Connections do not reconstruct roads, railways, or actual activity during gaps. Local segments shorter than the flight threshold use cubic Bezier curves in an azimuthal equidistant metric projection, with tangent directions shared across adjacent segments. Control distances are bounded by `--turn-radius-m` (default 1,000 m) and 30% of neighboring segment lengths. Every photo anchor remains exact. A sampled arc-length table maintains time-based progress along each curve. Long transfers retain their WGS84 geodesics. `--turn-radius-m 0` disables local curves. The CLI's 1,200 km/h plausibility limit permits ordinary flights; `Route` itself retains the conservative 350 km/h default for callers that do not specify a limit.
 
 ## Animation speed limits
 
@@ -194,7 +217,7 @@ If explicitly configured limits still conflict, the screen/zoom ceiling takes pr
 
 ## Caching and rendering
 
-The default `--camera fly` plans every camera viewport before encoding. It follows the journey, pulls back early for transfers outside `--city-km` when speed controls are enabled, and zooms into the destination. Without speed controls, the flight threshold is `--flight-km` (default 150). By default, a sine-squared zoom envelope spreads the zoom across each trip while eased camera centers follow departures and arrivals; the viewport widens if necessary to keep the vehicle visible. For segments within `--city-km` (default 5), the camera stays exactly still while the vehicle remains inside a safe viewport margin. If the vehicle reaches the edge, the camera pans at the current zoom. `--local-span-km` (default 12.5) controls local framing in projected map units. Camera planning remains independent of photo layout and vehicle timing.
+The default `--camera fly` plans every camera viewport before encoding. It follows the journey, pulls back early for transfers outside `--city-km` when speed controls are enabled, and zooms into the destination. Without speed controls, the flight threshold is `--flight-km` (default 150). By default, a sine-squared zoom envelope spreads the zoom across each trip while eased camera centers follow departures and arrivals; the viewport widens if necessary to keep the vehicle visible. For segments within `--city-km` (default 5), the camera stays exactly still while the vehicle remains inside a safe viewport margin. With photos enabled, that margin includes the full photo circle, shadow, timestamp label, and space for the bottom overlays. Panning starts before a new photo would be clipped. `--local-span-km` (default 4) controls local framing in projected map units. Photo geographic placement and vehicle timing remain unchanged.
 
 Compute the union of required tiles across all camera zoom levels, then download/cache it before rendering. `--max-tiles` defaults to 1,200; when necessary, lower map zoom levels to stay within that budget. Requests use four workers. Rendering uses only cached files, with an LRU holding 128 tiles and four stitched viewport atlases; no network requests occur during encoding. Background atlases are rebuilt only when tile bounds or zoom level change. The route and trail use an independent curve sampling layer, so short turns remain rounded even when their photo times fall between video frames. Both the vehicle and the trail follow the same curves.
 
@@ -212,7 +235,7 @@ Automatic encoding probes actual one-frame H.264 encodes with NVENC, QSV, and Vi
 
 Each accepted photo appears in a **circular, center-cropped thumbnail** with a white rim, soft shadow, and small timestamp. The circle center is its exact EXIF geographic location. Images honor EXIF orientation. Every marker stays available for the rest of the video, and multiple images coexist. A marker may move outside the current viewport as the camera travels; it returns when its location comes back into view.
 
-Photo sizes are fixed in projected map units. At the closest camera zoom anywhere in the video, each circle has a diameter of **`photo_size` × the screen width** (default `0.2`, or 384 pixels at 1920×1080). Set `"photo_size": 0.1` in `config.json` to halve that diameter; allowed values are greater than `0` and at most `1`. Zooming out by a factor of two halves the circle diameter; its shadow and label scale with it. Photo centers, sizes, and the background use the same camera transform throughout the journey and final overview. There are no screen offsets or final-layout rearrangements. The vehicle draws last.
+Photo sizes are fixed in projected map units. At the closest camera zoom anywhere in the video, each circle has a diameter of **`photo_size` × the screen width** (default `0.15`, or 288 pixels at 1920×1080). Set `"photo_size": 0.075` in `config.json` to halve that diameter; allowed values are greater than `0` and at most `1`. Zooming out by a factor of two halves the circle diameter; its shadow and label scale with it. Photo centers, sizes, and the background use the same camera transform throughout the journey and final overview. There are no screen offsets or final-layout rearrangements. The vehicle draws last.
 
 All photos remain registered at their locations. At wide zoom levels, thumbnails can become subpixel-sized and nearby photos can overlap; rasterization uses at least one pixel without moving the geographic anchor. The overview preserves the same geographical placement and map scale rather than promising individually readable thumbnails at global zoom. Reports include each marker's latitude/longitude, projected diameter, reference camera width, and overview pixel diameter.
 

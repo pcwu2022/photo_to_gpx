@@ -11,8 +11,9 @@ from .video.travel_route import raw_photo_paths
 
 # Project JSON uses positive booleans and keeps vehicle rules in their own file.
 RENAMED = {"config": "vehicles", "no_photos": "show_photos",
-           "no_trail": "trail", "no_sleep_adjustment": "sleep_adjustment"}
-INVERTED = {"no_photos", "no_trail", "no_sleep_adjustment"}
+           "no_trail": "trail", "no_sleep_adjustment": "sleep_adjustment",
+           "no_timeline": "show_timeline"}
+INVERTED = {"no_photos", "no_trail", "no_sleep_adjustment", "no_timeline"}
 
 
 def settings_schema():
@@ -45,6 +46,7 @@ def initialize(folder):
         settings["photos"] = "."
     else:
         (folder / "photos").mkdir(exist_ok=True)
+    (folder / "music").mkdir(exist_ok=True)
     vehicles = folder / "vehicles.json"
     if not vehicles.exists():
         vehicles.write_text(json.dumps({"default_icon": "car", "icons": {}, "ranges": []},
@@ -76,7 +78,7 @@ def read_project(folder):
     for key, action in schema.items():
         value = settings[key]
         if value is None:
-            if key not in {"photos", "gpx", "duration", "vehicles", "icon"}:
+            if key not in {"photos", "gpx", "duration", "vehicles", "icon", "music"}:
                 raise ValueError(f"{key}: cannot be null")
         elif action.type is Path:
             if not isinstance(value, str) or not value.strip():
@@ -100,7 +102,7 @@ def read_project(folder):
         raise ValueError("choose exactly one source: photos path, gpx path, or demo: true; set unused paths to null")
     if args.photos is not None and not args.photos.is_dir():
         raise ValueError(f"photos: directory does not exist: {args.photos}")
-    for key, path in (("gpx", args.gpx), ("vehicles", args.config), ("icon", args.icon)):
+    for key, path in (("gpx", args.gpx), ("vehicles", args.config), ("icon", args.icon), ("music", args.music)):
         if path is not None and not path.is_file():
             raise ValueError(f"{key}: file does not exist: {path}")
     if args.output.suffix.lower() != ".mp4":
@@ -109,8 +111,10 @@ def read_project(folder):
     for key, path in (("output", args.output), ("cache", args.cache)):
         if not path.is_relative_to(folder):
             raise ValueError(f"{key}: must be inside the project folder: {folder}")
-    if args.icon is not None and args.icon == args.output:
-        raise ValueError("output must not overwrite the icon")
+    if args.output in {args.icon, args.music, args.config, args.gpx}:
+        raise ValueError("output must not overwrite an input file")
+    if args.music_timing == "music" and args.music is None:
+        raise ValueError("music_timing: music requires a soundtrack path in music")
     return args
 
 

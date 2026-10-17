@@ -40,6 +40,39 @@ class ProjectChecks(unittest.TestCase):
         self.assertEqual(args.cache, self.folder / ".cache/photo-video")
         self.assertTrue(args.no_photos and args.no_trail and args.no_sleep_adjustment)
 
+    def test_presentation_defaults_and_music_folder(self):
+        self.assertTrue((self.folder / "music").is_dir())
+        args = read_project(self.folder)
+        self.assertIsNone(args.music)
+        self.assertEqual(args.music_timing, "video")
+        self.assertEqual(args.title, "")
+        self.assertEqual(args.photo_animation_seconds, 0.4)
+        self.assertFalse(args.no_timeline)
+        self.configure(show_timeline=False, title="NEW YORK", subtitle="2026 FALL")
+        args = read_project(self.folder)
+        self.assertTrue(args.no_timeline)
+        self.assertEqual(args.title, "NEW YORK")
+
+    def test_music_selection_and_invalid_presentation_settings(self):
+        music = self.folder / "music/song.wav"
+        music.write_bytes(b"file existence is checked before decoding")
+        self.configure(music="music/song.wav", music_timing="music")
+        self.assertEqual(read_project(self.folder).music, music)
+        self.configure(music=None)
+        with self.assertRaisesRegex(ValueError, "requires a soundtrack"):
+            read_project(self.folder)
+        self.configure(music_timing="video")
+        self.configure(music="music/song.wav", photos=None, demo=True)
+        self.assertEqual(self.invoke("check", str(self.folder)), 1)
+        self.assertIn("cannot decode music", self.output.getvalue())
+        for key, value in (("title", None), ("show_timeline", "false"),
+                           ("photo_animation_seconds", True), ("music_timing", "invalid")):
+            original = (self.folder / "config.json").read_text()
+            self.configure(**{key: value})
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, key):
+                read_project(self.folder)
+            (self.folder / "config.json").write_text(original)
+
     def test_init_preserves_existing_files_and_raw_indices(self):
         folder = Path(self.temporary.name) / "existing"
         folder.mkdir()

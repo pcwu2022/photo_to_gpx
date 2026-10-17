@@ -1,6 +1,7 @@
 """Keep timestamp-proportional motion separate from arrival and photo holds."""
 from bisect import bisect_left, bisect_right
 import math
+from pathlib import Path
 
 from .travel_route import GEOD
 
@@ -10,11 +11,11 @@ MIN_PHOTO_INTERVAL_SECONDS = 0.5
 
 class Playback:
     def __init__(self, route, motion_seconds, *, flight_km=150, long_pause=0.2, short_pause=0.05,
-                 profile=None, photo_interval=0):
+                 profile=None, photo_interval=0, photo_animation_seconds=0):
         if not (motion_seconds > 0 and flight_km > 0 and long_pause >= 0 and short_pause >= 0
-                and photo_interval >= 0
+                and photo_interval >= 0 and photo_animation_seconds >= 0
                 and all(math.isfinite(v) for v in (motion_seconds, flight_km, long_pause, short_pause,
-                                                   photo_interval))):
+                                                   photo_interval, photo_animation_seconds))):
             raise ValueError("invalid playback timing")
         self.route, self.scale = route, motion_seconds / route.duration
         self.profile, self.photo_interval = profile, photo_interval
@@ -27,6 +28,10 @@ class Playback:
         durations = [motion(b) - motion(a) for a, b in zip(route.ends, route.ends[1:])]
         base_holds = [0.0] + [long_pause if s[3] / 1000 >= flight_km else short_pause
                               for s in route.segments]
+        animation_holds = [photo_animation_seconds if any(Path(p.path).is_file() for p in groups[t])
+                           else 0 for t in route.ends]
+        if animation_holds[0]:
+            base_holds[0] = short_pause
         self.hold_prefix = [0.0]
         time = 0.0
         for anchor, route_t in enumerate(route.ends):
@@ -36,18 +41,21 @@ class Playback:
                 time += duration
                 self.ends.append(time)
             arrival = time
+            # Every same-location photo gets its own complete pop and arrival hold.
+            spacing = max(photo_interval, animation_holds[anchor] + base_holds[anchor]) if animation_holds[anchor] else photo_interval
             for j, photo in enumerate(groups[route_t]):
-                self.photo_arrivals[self.photo_key(photo)] = arrival + j * photo_interval
-            burst_hold = max(0, len(groups[route_t]) - 1) * photo_interval
+                self.photo_arrivals[self.photo_key(photo)] = arrival + j * spacing
+            burst_hold = max(0, len(groups[route_t]) - 1) * spacing
             # The next trip's actual movement time and the existing arrival wait
             # already count toward spacing. Only add the remaining time needed.
-            extra = (max(0.0, photo_interval - durations[anchor] - base_holds[anchor])
+            extra = (max(0.0, photo_interval - durations[anchor] - base_holds[anchor] - animation_holds[anchor])
                      if anchor < len(durations) else 0.0)
-            hold = burst_hold + base_holds[anchor] + extra
+            hold = burst_hold + base_holds[anchor] + animation_holds[anchor] + extra
             if hold:
                 distance = route.segments[anchor - 1][3] / 1000 if anchor else 0.0
                 self.pauses.append({"segment": anchor - 1, "arrival_seconds": arrival,
                                     "distance_km": distance, "hold_seconds": hold,
+                                    "animation_seconds": animation_holds[anchor],
                                     "photo_delay_seconds": burst_hold + extra})
                 self.phases.append((time, time + hold, route_t, route_t))
                 time += hold

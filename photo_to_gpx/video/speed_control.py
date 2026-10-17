@@ -4,14 +4,14 @@ from bisect import bisect_right
 import math
 
 from .travel_route import GEOD
-from .video_map import project_positions, flight_camera_track, overview_pose
+from .video_map import project_positions, flight_camera_track, overview_pose, offset_camera
 
 
 class SpeedProfile:
     def __init__(self, route, motion_seconds, size, fps, *, camera="fly", camera_seconds=0.6,
                  local_span_km=12.5, flight_km=150, city_km=5, min_speed_mps=2000,
                  # max_screen_speed_px=540, max_zoom_rate=1):  # Restore upper cap.
-                 max_screen_speed_px=0, max_zoom_rate=0):
+                 max_screen_speed_px=0, max_zoom_rate=0, edge_padding=None):
         values = (min_speed_mps, max_screen_speed_px, max_zoom_rate)
         if not all(math.isfinite(v) and v >= 0 for v in values):
             raise ValueError("animation speed limits must be finite and nonnegative")
@@ -50,20 +50,23 @@ class SpeedProfile:
                 return max(1, min(64, 0.6 * limit * local_span_km * 1000 * distance / 1.8))
             self.cameras = flight_camera_track(self.points, positions, route, size, fps,
                                               camera_seconds, local_span_km, city_km + 0.001, city_km,
-                                              zoom_ramp=ramp)
+                                              zoom_ramp=ramp, edge_padding=edge_padding)
         else:
-            pose = (overview_pose(self.points, size) if camera == "fixed" else
+            pose = (overview_pose(self.points, size, edge_padding) if camera == "fixed" else
                     (*self.points[0], local_span_km * 1000 * size[0] / size[1], local_span_km * 1000))
             if min_speed_mps and max_screen_speed_px:
                 needed = local_span_km * 1000
                 factor = max(1, needed / pose[3])
-                pose = (*pose[:2], pose[2] * factor, pose[3] * factor)
+                shift = (offset_camera((0, 0, pose[2] * (factor - 1), pose[3] * (factor - 1)),
+                                       size, edge_padding) if camera == "fixed" and edge_padding else (0, 0))
+                pose = (pose[0] + shift[0], pose[1] + shift[1], pose[2] * factor, pose[3] * factor)
             self.cameras = []
             for point in self.points:
                 if camera == "follow":
                     # Spatial look-ahead avoids following a vehicle after it leaves the frame.
                     pose = (*point, *pose[2:])
-                self.cameras.append(pose)
+                self.cameras.append(offset_camera(pose, size, edge_padding)
+                                    if camera == "follow" and edge_padding else pose)
         nominal_scale = motion_seconds / route.duration
         for k in range(1, len(self.times)):
             if self.times[k] == self.times[k - 1]:

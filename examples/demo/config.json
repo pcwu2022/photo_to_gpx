@@ -42,6 +42,11 @@
   "vehicle": "car",
   "icon": null,
   "trail": true,
-  "encoder": "libx264"
-
+  "encoder": "libx264",
+  "music": null,
+  "music_timing": "video",
+  "title": "",
+  "subtitle": "",
+  "photo_animation_seconds": 0.4,
+  "show_timeline": true
 }

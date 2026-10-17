@@ -25,6 +25,31 @@ ESRI_ATTRIBUTION = ("Sources: Esri, HERE, Garmin, Intermap, increment P Corp., G
 PROJECT = Transformer.from_crs(4326, 3857, always_xy=True, force_over=True)
 
 
+def map_attribution(plain=False, provider="esri"):
+    return ("Offline schematic • inferred geodesic route" if plain else
+            ESRI_ATTRIBUTION if provider == "esri" else "© OpenStreetMap contributors © CARTO")
+
+
+def camera_tracking_area(size, edge_padding=None):
+    """Safe half-spans and camera bias for an asymmetric screen rectangle."""
+    left, top, right, bottom = edge_padding or (40, 72, 40, 72)
+    # Extremely large photos may exceed the frame itself; retain a usable tracking
+    # region instead of allowing zero/negative camera spans in that configuration.
+    horizontal = min(1, size[0] * 0.9 / max(1, left + right))
+    vertical = min(1, size[1] * 0.9 / max(1, top + bottom))
+    left, right = left * horizontal, right * horizontal
+    top, bottom = top * vertical, bottom * vertical
+    return ((size[0] - left - right) / (2 * size[0]),
+            (size[1] - top - bottom) / (2 * size[1]),
+            (right - left) / (2 * size[0]), (top - bottom) / (2 * size[1]))
+
+
+def offset_camera(pose, size, edge_padding):
+    _, _, bias_x, bias_y = camera_tracking_area(size, edge_padding)
+    cx, cy, sx, sy = pose
+    return cx + bias_x * sx, cy + bias_y * sy, sx, sy
+
+
 def project_positions(positions):
     result = []
     longitude = positions[0].longitude
@@ -175,11 +200,12 @@ class MapCanvas:
 
 
 def flight_camera_track(points, positions, route, size, fps, smoothing=0.6,
-                        local_span_km=12.5, flight_km=150, city_km=5, zoom_ramp=1):
+                        local_span_km=12.5, flight_km=150, city_km=5, zoom_ramp=1,
+                        edge_padding=None):
     """Endpoint-aware flight easing, with a locked viewport for nearby movements."""
     aspect = size[0] / size[1]
     local = local_span_km * 1000
-    half_x, half_y = 0.5 - 40 / size[0], 0.5 - 72 / size[1]
+    half_x, half_y, _, _ = camera_tracking_area(size, edge_padding)
     pose = (points[0][0], points[0][1], local * aspect, local)
     cameras, segment_id, departure_pose = [], None, pose
     alpha = 1 - math.exp(-1 / (fps * smoothing))
@@ -194,7 +220,7 @@ def flight_camera_track(points, positions, route, size, fps, smoothing=0.6,
         stationary = index and position.animation_time == positions[index - 1].animation_time
         if distance <= city_km * 1000 and inside:
             # Exact lock: no smoothing drift, zoom changes, or camera anticipation.
-            cameras.append(pose)
+            cameras.append(offset_camera(pose, size, edge_padding))
             continue
         if distance >= flight_km * 1000 and not stationary:
             eased = u * u * (3 - 2 * u)
@@ -232,15 +258,20 @@ def flight_camera_track(points, positions, route, size, fps, smoothing=0.6,
             sy = math.exp(math.log(departure_pose[3]) * (1 - eased) + math.log(local) * eased)
         sy = max(sy, abs(point[1] - cy) / half_y, abs(point[0] - cx) / (half_x * aspect))
         pose = (cx, cy, sy * aspect, sy)
-        cameras.append(pose)
+        cameras.append(offset_camera(pose, size, edge_padding))
     return cameras
 
 
-def overview_pose(points, size):
+def overview_pose(points, size, edge_padding=None):
     xs, ys = zip(*points)
     aspect = size[0] / size[1]
     sy = max(max(ys) - min(ys), (max(xs) - min(xs)) / aspect, 1000) * 1.4
-    return ((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, sy * aspect, sy)
+    if edge_padding:
+        half_x, half_y, _, _ = camera_tracking_area(size, edge_padding)
+        sy = max(sy, (max(ys) - min(ys)) / (2 * half_y),
+                 (max(xs) - min(xs)) / (2 * half_x * aspect))
+    pose = ((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, sy * aspect, sy)
+    return offset_camera(pose, size, edge_padding) if edge_padding else pose
 
 
 def append_overview(cameras, start_index, target, transition_frames):
@@ -262,8 +293,7 @@ class FlightMapCanvas:
         from collections import OrderedDict
         self.size, self.cameras, self.points = size, cameras, points
         self.cache, self.provider, self.plain, self.trail = Path(cache), provider, plain, trail
-        self.attribution = ("Offline schematic • inferred geodesic route" if plain else
-                            ESRI_ATTRIBUTION if provider == "esri" else "© OpenStreetMap contributors © CARTO")
+        self.attribution = map_attribution(plain, provider)
         self.tiles, self.atlases = OrderedDict(), OrderedDict()
         self.plans = []
         required = set()

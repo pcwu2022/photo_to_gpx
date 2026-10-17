@@ -9,15 +9,28 @@ from .travel_route import GEOD
 from .video_map import PROJECT
 
 
-class PhotoMarkers:
-    FADE_IN = 0.18
+def photo_camera_padding(size, photo_size, bottom_reserved=0):
+    """Fit the full-size circle, shadow, and label above persistent bottom overlays."""
+    diameter = size[0] * photo_size
+    scale = diameter / max(16, round(diameter))
+    radius = diameter / 2
+    gap = max(8, round(size[1] * 0.015))
+    horizontal = max(40, radius + 12 * scale + gap)
+    top = max(72, radius + 12 * scale + gap)
+    bottom = max(72, radius + 30 * scale + bottom_reserved + gap)
+    return horizontal, top, horizontal, bottom
 
+
+class PhotoMarkers:
     def __init__(self, events, route_duration, motion_seconds, size, *, duration=4,
                  cluster_seconds=30, cluster_meters=50, arrival_time=None, photo_arrival_time=None, fps=30,
-                 photo_size=0.2):
+                 photo_size=0.2, animation_seconds=0):
         if not math.isfinite(photo_size) or not 0 < photo_size <= 1:
             raise ValueError("photo_size must be greater than 0 and at most 1")
         self.photo_size = photo_size
+        if not math.isfinite(animation_seconds) or animation_seconds < 0:
+            raise ValueError("photo animation duration must be finite and nonnegative")
+        self.animation_seconds = animation_seconds
         self.duration, self.size = duration, size
         self.cache, self.scaled_cache, self.issues = OrderedDict(), OrderedDict(), []
         self.groups, self.entries = [], []
@@ -108,11 +121,13 @@ class PhotoMarkers:
         diameter = self.world_diameter_m / (span_m or self.reference_span_m) * self.size[0]
         return center, diameter
 
-    def scaled_thumbnail(self, photo, scale):
+    def scaled_thumbnail(self, photo, scale, *, cache=True):
         base = self.thumbnail(photo)
         if base is None:
             return None
         dimensions = tuple(max(1, round(v * scale)) for v in base.size)
+        if not cache:
+            return base.resize(dimensions, Image.Resampling.LANCZOS)
         key = (photo.path, dimensions)
         if key not in self.scaled_cache:
             self.scaled_cache[key] = (base if dimensions == base.size else
@@ -130,12 +145,18 @@ class PhotoMarkers:
             start, _, photo = self.entries[i]
             (x, y), diameter = self.geometry(i, screen, reference_x, span_m)
             radius = diameter / 2
-            if x + radius < 0 or x - radius > self.size[0] or y + radius < 32 or y - radius > self.size[1] - 26:
+            if x + radius < 0 or x - radius > self.size[0] or y + radius < 0 or y - radius > self.size[1] - 26:
                 continue
-            opacity = min(1, max(0, (seconds - start) / self.FADE_IN))
+            if self.animation_seconds:
+                progress = min(1, max(0, (seconds - start) / self.animation_seconds))
+                eased = 1 - (1 - progress) ** 3
+                pop_scale = 0.08 + 0.92 * eased
+                opacity = min(1, progress * 4)
+            else:
+                pop_scale, opacity = 1, 1
             if opacity <= 0:
                 continue
-            sprite = self.scaled_thumbnail(photo, scale)
+            sprite = self.scaled_thumbnail(photo, scale * pop_scale, cache=pop_scale == 1)
             if sprite is None:
                 continue
             if opacity < 1:

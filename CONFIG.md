@@ -7,7 +7,7 @@ python -m photo_to_gpx check projects/test1
 python -m photo_to_gpx run projects/test1
 ```
 
-This reference covers all 44 supported fields. Defaults below are the project defaults used by `init`, rather than the shorter settings used by `examples/demo`.
+This reference covers all 50 supported fields. Defaults below match the tuned `projects/test4/config.json` settings and are used by `init`. Existing projects keep their explicit overrides; `examples/demo` keeps its shorter preview settings.
 
 ## JSON and path rules
 
@@ -15,7 +15,7 @@ This reference covers all 44 supported fields. Defaults below are the project de
 - Omitted fields use the defaults below. Unknown fields are errors.
 - Use JSON booleans (`true`, `false`), numbers (`30`, `0.5`), and strings (`"fly"`). Do not quote numbers or booleans.
 - All numbers must be finite. Fields described as integers reject fractional values.
-- Only `photos`, `gpx`, `duration`, `vehicles`, and `icon` accept `null`. It means no source/file or automatic duration; it does not restore a field's default.
+- Only `photos`, `gpx`, `duration`, `vehicles`, `icon`, and `music` accept `null`. It means no source/file or automatic duration; it does not restore a field's default.
 - Relative paths resolve from the directory containing `config.json`, regardless of your working directory. Absolute input paths are also supported.
 - `output` and `cache` must resolve inside the project folder. Custom artwork paths within `vehicles.json` resolve from that file's directory.
 
@@ -28,7 +28,7 @@ For example, `"photos": "photos"` in `projects/test1/config.json` reads `project
 | `photos` | `"photos"` | Existing directory path or `null` | Recursively reads supported images from this directory. Use `"photos"` for the standard layout. `"."` reads the project directory itself, including images in its subdirectories. |
 | `gpx` | `null` | Existing GPX file path or `null` | Uses timestamped GPX points instead of photos. Set `photos` to `null` when selecting this input. |
 | `demo` | `false` | Boolean | Uses a built-in synthetic route without real photos. Set both `photos` and `gpx` to `null`. |
-| `timezone` | `"UTC"` | Valid IANA timezone name | Fallback capture timezone, such as `"America/New_York"`, `"Asia/Taipei"`, or `"UTC"`. Also supplies the local timezone for GPX sleep adjustment. |
+| `timezone` | `"America/New_York"` | Valid IANA timezone name | Fallback capture timezone, such as `"America/New_York"`, `"Asia/Taipei"`, or `"UTC"`. Also supplies the local timezone for GPX sleep adjustment. |
 
 Exactly one source must be selected. Merely setting `gpx` or `demo` does not disable the default `photos` source.
 
@@ -71,7 +71,32 @@ segment_seconds = clamp(
 
 An explicit `duration` rescales the baseline segments. In compressed mode, rendering rejects an explicit duration that makes a baseline segment shorter than 0.2 seconds. Speed controls can subsequently change movement durations in either mode.
 
-`duration` is therefore not the final MP4 runtime. Final runtime includes retimed motion, arrival pauses, any additional waits needed to space photos apart, and the final overview, rounded to frames. The report records the actual runtime and timing adjustments.
+`duration` is therefore not the final MP4 runtime. Final runtime includes retimed motion, photo animations and arrival pauses, any additional waits needed to space photos apart, optional opening titles, and the final overview, rounded to frames. With `music_timing: "music"`, this complete sequence is then scaled to the soundtrack. The report records the actual runtime and timing adjustments.
+
+## Music
+
+Put soundtracks in a `music/` folder beside `photos/`, `config.json`, `vehicles.json`, and `output/`. `init` creates the music folder. Select one file explicitly, for example `"music": "music/song.mp3"`; other files in the folder are ignored.
+
+| Field | Default | Allowed values | Meaning |
+| --- | --- | --- | --- |
+| `music` | `null` | Existing audio file path or `null` | Soundtrack file. MP3, WAV, M4A, FLAC, OGG, and other audio formats supported by the bundled FFmpeg can be used. The first audio stream is selected. `null` produces a silent video. |
+| `music_timing` | `"video"` | `"video"`, `"music"` | `"video"` preserves the native video duration, loops shorter music to fill it, and trims longer music at the end. `"music"` preserves the song's playback speed and uniformly stretches or compresses the entire video to match its duration, within video-frame precision; requires `music`. |
+
+Music starts at the beginning of the video, including an opening title when present. It is encoded as AAC in the MP4; the original audio file is unchanged. In `"music"` mode, title fades, camera transitions, photo pops, movement, pauses, and the ending all scale together. FPS remains unchanged. Speed limits and configured wait durations apply to the native sequence before soundtrack scaling; after scaling they may be faster or slower. Very short tracks can leave fewer frames for individual events.
+
+Reports include `music_seconds`, `music_timing`, `music_looped`, `native_seconds`, and `video_time_scale`. Event arrivals and holds use the output-video clock. `check` decodes the selected audio to validate it and measure its duration, without encoding a video.
+
+## Titles and date timeline
+
+| Field | Default | Allowed values | Meaning |
+| --- | --- | --- | --- |
+| `title` | `""` | String | Opening and closing title. An empty or whitespace-only string disables both title cards and the opening overview. Text is rendered in uppercase using bundled Inter, with bold title text, a smaller wide-tracked subtitle, and a soft black shadow. Long titles wrap and shrink to fit. |
+| `subtitle` | `""` | String | Optional text below the title. Rendered only when `title` is nonempty. |
+| `show_timeline` | `true` | Boolean | Shows a subtle bottom date timeline above the map attribution, with a moving train and current date/time. `false` hides it. The previous top timestamp banner is always removed. |
+
+The opening title appears over the complete route's map bounds for `overview_hold` seconds, smoothly fades out, then the camera zooms to the departure over `overview_seconds` seconds. The journey starts after that transition. At the end, the existing overview transition finishes, then the same title fades in and out over the final hold, whose duration is `max(overview_hold, popup_seconds)`. Title fades use smooth easing, with up to 0.8 seconds for each fade, shortened for brief holds. With music fitting, all these durations scale with the complete video.
+
+The timeline uses the actual accepted capture timestamps and the configured `timezone`, rather than animation elapsed time. It stays at the same date during an arrival pause and reaches the final date in the ending overview. It is hidden during the opening title and camera transition, and has a small gap above the attribution footer. Tick selection follows the complete capture range: under one day, every two hours; from one day to less than one calendar month, every local day; otherwise every month. Labels are thinned when needed to avoid overlap, while the ticks remain. Local daily ticks account for daylight-saving offset changes.
 
 ## Overnight adjustment and route validation
 
@@ -80,7 +105,7 @@ An explicit `duration` rescales the baseline segments. In compressed mode, rende
 | `sleep_adjustment` | `true` | Boolean | Subtracts seven hours once from an eligible photo gap before allocating baseline movement time. See the conditions below. |
 | `sleep_distance_km` | `1000` | Number at least `0`, in kilometres | A gap's WGS84 distance must be strictly greater than this threshold to qualify for sleep removal. `0` removes the distance threshold for nonzero-distance gaps; it does not disable the adjustment. |
 | `max_speed_kmh` | `1200` | Positive number, in kilometres per real hour | GPS plausibility limit. A photo requiring a faster trip from the previous accepted anchor is skipped. This checks real capture timestamps, independently of video playback speed. |
-| `gap_hours` | `12` | Positive number of real hours | Reports a gap longer than this threshold as an inferred transfer. This warning does not itself reject a photo or insert a pause. |
+| `gap_hours` | `6` | Positive number of real hours | Reports a gap longer than this threshold as an inferred transfer. This warning does not itself reject a photo or insert a pause. |
 | `turn_radius_m` | `1000` | Number at least `0`, in metres | Controls rounding of local route corners. Curves pass through the photo anchors, and their control lengths are also bounded by neighbouring segment lengths. `0` disables local curves. Segments at or above `flight_km` use geodesics. |
 
 Sleep adjustment requires all three conditions: at least seven real hours between captures, a distance strictly above `sleep_distance_km`, and crossing 2 AM in the departure photo's local timezone. It subtracts seven hours once per qualifying gap and retains at least one adjusted second. It does not change original timestamps or the GPS plausibility check. Set `sleep_adjustment` to `false` to disable it.
@@ -91,11 +116,13 @@ Sleep adjustment requires all three conditions: at least seven real hours betwee
 | --- | --- | --- | --- |
 | `camera` | `"fly"` | `"fly"`, `"follow"`, `"fixed"` | `"fly"` follows travel with changing zoom. `"follow"` tracks the vehicle at a fixed journey zoom. `"fixed"` frames the entire route. All modes include the separate final overview. |
 | `camera_seconds` | `0.6` | Positive number of seconds | Camera smoothing/transition time scale. Larger values soften following movements. Its effect depends on the camera and speed-control mode; it is not a fixed pause added to each leg. |
-| `local_span_km` | `12.5` | Positive number, in projected kilometres | Local viewport height for flying/following views, with width derived from the aspect ratio. Larger values show a wider area. These are map-projection units, so the ground distance varies with latitude. Speed-limit planning may widen the view further. |
+| `local_span_km` | `4` | Positive number, in projected kilometres | Local viewport height for flying/following views, with width derived from the aspect ratio. Larger values show a wider area. These are map-projection units, so the ground distance varies with latitude. Speed-limit planning may widen the view further. |
 | `flight_km` | `150` | Positive number of kilometres | Long-transfer threshold. It selects long versus short arrival pauses and the cutoff for local route curves. It also controls flight-camera transfer classification when all speed controls are disabled. |
 | `city_km` | `5` | Positive number of kilometres | Classifies short city movements. The flying camera stays still while these movements fit safely in the viewport, then pans if needed. When any speed control is active, camera transfer planning uses the city threshold to pull back for longer trips. |
 
 The speed controller is active by default because `min_speed_mps` is nonzero. Changing only `flight_km` therefore changes pauses and curve selection, but may not change the camera's transfer classification.
+
+With photo markers enabled, camera planning reserves room for their full configured diameter, shadow, and timestamp label, plus the bottom timeline and attribution. The camera therefore begins panning before a newly arriving photo would be clipped, while keeping short movements locked when they fit. Increasing `photo_size` also increases this automatic margin; no extra setting is needed. The overview uses the same safe area.
 
 ## Animation speed controls
 
@@ -111,16 +138,19 @@ These settings affect movement, independently of arrival waits and the overview.
 
 | Field | Default | Allowed values | Meaning |
 | --- | --- | --- | --- |
-| `show_photos` | `true` | Boolean | Displays persistent circular photo thumbnails at their geographic positions. Also enables extra waits needed to keep photo appearances at least 0.3 seconds apart, rounded up to whole frames. `false` disables these markers and extra photo-spacing waits. |
-| `photo_size` | `0.2` | Number greater than `0` and at most `1` | Photo-circle diameter as a fraction of viewport width at the closest planned zoom. `0.2` means one-fifth; `0.1` halves the diameter; `0.3` enlarges it. The resulting geographic diameter stays fixed, so photos shrink with the map when zooming out. Has no visible effect when `show_photos` is `false`. |
+| `show_photos` | `true` | Boolean | Displays persistent circular photo thumbnails at their geographic positions. Also enables extra waits needed to keep photo appearances at least 0.5 seconds apart, rounded up to whole frames. `false` disables these markers, photo animations, and extra photo-spacing waits. |
+| `photo_size` | `0.15` | Number greater than `0` and at most `1` | Photo-circle diameter as a fraction of viewport width at the closest planned zoom. `0.15` means 15% of the viewport width; `0.075` halves the default diameter; `0.3` doubles it. The resulting geographic diameter stays fixed, so photos shrink with the map when zooming out. Has no visible effect when `show_photos` is `false`. |
+| `photo_animation_seconds` | `0.4` | Number at least `0`, in seconds | Photo pop-in duration, with an eased small-to-full-size transition anchored at the photo's geographic center. Added to the arrival pause for each real photo, including the first photo and same-timestamp bursts. `0` makes photos appear immediately with no fade or scale animation. |
 | `trail` | `true` | Boolean | Draws the travelled route behind the vehicle. Future route segments remain hidden. |
-| `long_pause` | `0.2` | Number at least `0`, in seconds | Arrival hold after a segment whose distance is at least `flight_km`. `0` disables these holds. |
-| `short_pause` | `0.05` | Number at least `0`, in seconds | Arrival hold after a segment shorter than `flight_km`. `0` disables these holds. |
-| `overview_seconds` | `5` | Positive number of seconds | Final camera transition to a view of the entire route and all accepted photo markers. |
-| `overview_hold` | `5` | Positive number of seconds | Requested hold after the final overview transition. The effective hold is the larger of this value and `popup_seconds`. |
+| `long_pause` | `0.4` | Number at least `0`, in seconds | Arrival hold after a segment whose distance is at least `flight_km`. `0` disables these holds. |
+| `short_pause` | `0.2` | Number at least `0`, in seconds | Arrival hold after a segment shorter than `flight_km`. `0` disables these holds. |
+| `overview_seconds` | `3` | Positive number of seconds | Final camera transition to a view of the entire route and all accepted photo markers. Also the opening zoom-in duration when a title is present. |
+| `overview_hold` | `5` | Positive number of seconds | Requested hold after the final overview transition, and the opening title-card duration when a title is present. The effective final hold is the larger of this value and `popup_seconds`. |
 | `popup_seconds` | `4` | Positive number of seconds | Legacy-named minimum final overview hold. It does not make photo markers expire. |
 
 Setting both arrival pauses to zero does not disable the extra waits used for photo spacing. Those remain while `show_photos` is true. Overview settings and `popup_seconds` currently require positive values; zero cannot disable the final overview.
+
+For a single short-leg arrival, the base hold is `photo_animation_seconds + short_pause`; for a long leg it is `photo_animation_seconds + long_pause`. Animation holds round up to whole source frames so the pop can finish before departure. Same-timestamp photos receive individual animation/hold slots. Additional waits can still be added to satisfy the minimum photo spacing. GPX and synthetic route points without photo files do not receive animation holds. Music fitting scales the resulting waits with the whole video.
 
 ## Vehicles and artwork
 
@@ -158,6 +188,22 @@ Indices are 1-based, inclusive, and assigned before metadata filtering or chrono
 ## Example selections
 
 These snippets are settings to merge into a project's existing config. They are not additional named presets or CLI flags.
+
+### Titled trip fitted to a soundtrack
+
+```json
+{
+  "music": "music/song.mp3",
+  "music_timing": "music",
+  "title": "NEW YORK",
+  "subtitle": "2026 FALL",
+  "overview_hold": 4,
+  "photo_animation_seconds": 0.4,
+  "show_timeline": true
+}
+```
+
+Use `"music_timing": "video"` to preserve video timing and loop the music instead. Set `music` to `null` and `music_timing` to `"video"` to return to a silent video.
 
 ### Faster local preview
 
