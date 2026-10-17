@@ -4,7 +4,7 @@ from datetime import timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 from .vehicle_icons import vehicle_icon
 
@@ -40,10 +40,10 @@ def attribution_footer(size, text):
         else:
             line = candidate
     lines.append(line)
-    footer = Image.new("RGB", (size[0], len(lines) * 13 + 12), "white")
+    footer = Image.new("RGBA", (size[0], len(lines) * 13 + 12), (0, 0, 0, 0))
     draw = ImageDraw.Draw(footer)
     for index, line in enumerate(lines):
-        draw.text((12, 6 + index * 13), line, fill="#23313d")
+        draw.text((12, 6 + index * 13), line, fill="white")
     return footer
 
 
@@ -146,7 +146,7 @@ class CalendarTimeline:
         self.zone = ZoneInfo(timezone_name)
         self.mode, self.ticks = timeline_ticks(start, end, timezone_name)
         width, height = size
-        self.height = max(46, round(height * 0.065))
+        self.height = max(60, round(height * 0.065))
         self.gap = max(10, round(height * 0.018))
         self.top = height - footer_height - self.height - self.gap
         self.left, self.right = round(width * 0.075), round(width * 0.925)
@@ -156,31 +156,37 @@ class CalendarTimeline:
         draw.rounded_rectangle((self.left - 12, 1, self.right + 12, self.height - 2),
                                radius=10, fill=(247, 249, 250, 205))
         draw.line((self.left, self.y, self.right, self.y), fill=(86, 102, 114, 120), width=1)
-        self.label_font = font(max(9, min(13, width / 100)))
+        self.label_font = font(1.2 * max(9, min(13, width / 100)))
         last_right = -100
         for timestamp, label in self.ticks:
             x = self.x(timestamp)
-            draw.line((x, self.y - 3, x, self.y + 3), fill=(86, 102, 114, 150))
+            draw.line((x, self.y + 10, x, self.y + 16), fill=(86, 102, 114, 150))
             label_width = draw.textlength(label, font=self.label_font)
             if x - label_width / 2 >= last_right + 12 and x + label_width / 2 < width - 8:
-                draw.text((x, self.y + 7), label, font=self.label_font,
+                draw.text((x, self.y + 20), label, font=self.label_font,
                           anchor="mt", fill=(55, 70, 81, 195))
                 last_right = x + label_width / 2
-        self.icon = vehicle_icon("train")
-        self.icon.thumbnail((18, 18), Image.Resampling.LANCZOS)
-        self.icon = self.icon.rotate(-90, expand=True)
+        self.icons = {}
+
+    def set_icons(self, icons):
+        """Reuse the map's configured assets, facing forward along the timeline."""
+        self.icons = {}
+        for name, image in icons.items():
+            icon = ImageOps.contain(image, (27, 27), Image.Resampling.LANCZOS)
+            self.icons[name] = icon.rotate(-90, expand=True)
 
     def x(self, timestamp):
         progress = (timestamp - self.start).total_seconds() / max(1e-9, (self.end - self.start).total_seconds())
         return self.left + min(1, max(0, progress)) * (self.right - self.left)
 
-    def draw(self, frame, timestamp):
+    def draw(self, frame, timestamp, kind="train"):
+        if kind not in self.icons:
+            icon = ImageOps.contain(vehicle_icon(kind), (27, 27), Image.Resampling.LANCZOS)
+            self.icons[kind] = icon.rotate(-90, expand=True)
         layer = self.base.copy()
         draw = ImageDraw.Draw(layer)
         x = self.x(timestamp)
         draw.line((self.left, self.y, x, self.y), fill=(55, 77, 91, 190), width=2)
-        layer.alpha_composite(self.icon, (round(x - self.icon.width / 2), self.y - self.icon.height // 2))
-        label = timestamp.astimezone(self.zone).strftime("%b %d, %Y  %H:%M")
-        draw.text((self.size[0] / 2, 1), label, font=self.label_font,
-                  anchor="mt", fill=(55, 70, 81, 200))
+        icon = self.icons[kind]
+        layer.alpha_composite(icon, (round(x - icon.width / 2), self.y - icon.height // 2))
         frame.paste(layer, (0, self.top), layer)

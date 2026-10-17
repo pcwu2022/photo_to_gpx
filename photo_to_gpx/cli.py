@@ -98,6 +98,7 @@ def read_project(folder):
         if action.dest in INVERTED:
             value = not value
         setattr(args, action.dest, value)
+    video.validate_line_color(args.line_color)
     if sum(bool(value) for value in (args.photos, args.gpx, args.demo)) != 1:
         raise ValueError("choose exactly one source: photos path, gpx path, or demo: true; set unused paths to null")
     if args.photos is not None and not args.photos.is_dir():

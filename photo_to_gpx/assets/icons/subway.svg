@@ -1,0 +1,26 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="72" viewBox="0 0 48 72">
+  <title>NYC Subway Train - 1</title>
+  <rect x="20" y="65" width="8" height="6" rx="1" fill="#1e293b" />
+  <path d="M 8,16 Q 8,4 24,4 Q 40,4 40,16 V 64 Q 40,68 36,68 H 12 Q 8,68 8,64 Z" fill="#9ca3af" stroke="#374151" stroke-width="2" />
+  <path d="M 11,26 V 63 M 14,26 V 63 M 17,26 V 63 M 20,26 V 63 M 28,26 V 63 M 31,26 V 63 M 34,26 V 63 M 37,26 V 63" stroke="#6b7280" stroke-width="1" stroke-dasharray="3,1" />
+  <path d="M 9,14 Q 9,5 24,5 Q 39,5 39,14 V 22 H 9 Z" fill="#808893" />
+  <circle cx="14" cy="8" r="2" fill="#fef08a" stroke="#374151" stroke-width="0.6" />
+  <circle cx="14" cy="12.5" r="1.5" fill="#374151" stroke="#1f2937" stroke-width="0.5" />
+  <circle cx="34" cy="8" r="2" fill="#fef08a" stroke="#374151" stroke-width="0.6" />
+  <circle cx="34" cy="12.5" r="1.5" fill="#374151" stroke="#1f2937" stroke-width="0.5" />
+  <rect x="20" y="6" width="8" height="16" rx="1" fill="#6b7280" stroke="#374151" stroke-width="1" />
+  <rect x="21.5" y="14" width="5" height="6" rx="0.5" fill="#1e293b" stroke="#374151" stroke-width="0.5" />
+  <rect x="22" y="14.5" width="4" height="5" fill="#38bdf8" opacity="0.8" />
+  <path d="M 21,13.5 L 24,10.5 L 27,13.5 M 21,11 L 24,8 L 27,11" stroke="#374151" stroke-width="0.8" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+  <rect x="11" y="16" width="7" height="6" rx="1" fill="#1e293b" stroke="#374151" stroke-width="0.8" />
+  <rect x="11.8" y="16.8" width="5.4" height="4.4" rx="0.5" fill="#38bdf8" opacity="0.8" />
+  <rect x="30" y="16" width="7" height="6" rx="1" fill="#1e293b" stroke="#374151" stroke-width="0.8" />
+  <circle cx="33.5" cy="19" r="2.2" fill="#EE352E" />
+  <text x="33.5" y="19" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="3" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central" transform="scale(1, -1) translate(0, -38)">1</text>
+  <rect x="16" y="30" width="16" height="12" rx="2" fill="#4b5563" stroke="#1f2937" stroke-width="1" />
+  <path d="M 19,33 H 29 M 19,36 H 29 M 19,39 H 29" stroke="#6b7280" stroke-width="1" />
+  <rect x="16" y="47" width="16" height="12" rx="2" fill="#4b5563" stroke="#1f2937" stroke-width="1" />
+  <path d="M 19,50 H 29 M 19,53 H 29 M 19,56 H 29" stroke="#6b7280" stroke-width="1" />
+  <path d="M 12,66 H 36" stroke="#374151" stroke-width="2.5" stroke-linecap="round" />
+</svg>

@@ -9,6 +9,7 @@ import struct
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 import wave
 
 import imageio_ffmpeg
@@ -20,6 +21,7 @@ from photo_to_gpx.video.playback import Playback
 from photo_to_gpx.video.presentation import TitleCard, CalendarTimeline, card_opacity, timeline_ticks
 from photo_to_gpx.video.soundtrack import audio_duration, render_clock
 from photo_to_gpx.video.travel_route import Route, demo_route
+from photo_to_gpx.video.video_map import FlightMapCanvas
 
 
 def make_music(path, seconds):
@@ -95,6 +97,42 @@ class PresentationChecks(unittest.TestCase):
         self.assertAlmostEqual(playback.duration, 3.5)
         disabled = Playback(self.route, 2, short_pause=0.1, photo_animation_seconds=0)
         self.assertAlmostEqual(disabled.duration, 2.1)
+
+    def test_timeline_uses_configured_vehicle_assets_and_larger_text(self):
+        start = self.route.photos[0].timestamp
+        timeline = CalendarTimeline((640, 360), start, start + timedelta(days=4))
+        self.assertEqual(timeline.label_font.size, 11)
+        custom = Image.new("RGBA", (12, 18), "red")
+        timeline.set_icons({"custom": custom})
+        frame = Image.new("RGB", (640, 360), "white")
+        timeline.draw(frame, start, "custom")
+        self.assertEqual(timeline.icons["custom"].size, (27, 18))
+        self.assertEqual(frame.getpixel((round(timeline.left), timeline.top + timeline.y)),
+                         (255, 0, 0))
+        self.assertEqual(custom.size, (12, 18))
+
+    def test_final_overview_hides_vehicle_and_timeline(self):
+        with patch("photo_to_gpx.video.photos_to_video.codec_options", return_value=["-crf", "0"]):
+            self.render_video("visible.mp4", vehicle="train", show_photos=False)
+            self.render_video("hidden.mp4", vehicle="plane", show_photos=False, show_timeline=False)
+
+        def frames(name):
+            return subprocess.run(
+                [imageio_ffmpeg.get_ffmpeg_exe(), "-v", "error", "-i", str(self.folder / name),
+                 "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"],
+                capture_output=True, check=True).stdout
+
+        visible, hidden = frames("visible.mp4"), frames("hidden.mp4")
+        frame_size = 320 * 240 * 3
+        self.assertNotEqual(visible[:frame_size], hidden[:frame_size])
+        self.assertEqual(visible[-frame_size:], hidden[-frame_size:])
+
+    def test_route_line_uses_configured_hex_color(self):
+        points = [(0, 0), (100, 0)]
+        canvas = FlightMapCanvas(points, [(50, 0, 200, 200)] * 2, (320, 240),
+                                 cache=self.folder / "cache", plain=True, line_color="#00a8FF")
+        frame, _ = canvas.frame(points[-1], 1, 1)
+        self.assertEqual(frame.getpixel((160, 120)), (0, 168, 255))
 
     def test_pop_grows_without_moving_anchor_and_zero_is_immediate(self):
         photo = self.route.events[0][1]

@@ -1,5 +1,7 @@
 {
-  "default_icon": "car",
+  "default_icon": "subway",
   "icons": {},
-  "ranges": []
+  "ranges": [
+    {"start": 5, "end": 8, "icon": "boat"}
+  ]
 }

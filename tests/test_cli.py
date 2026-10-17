@@ -48,10 +48,20 @@ class ProjectChecks(unittest.TestCase):
         self.assertEqual(args.title, "")
         self.assertEqual(args.photo_animation_seconds, 0.4)
         self.assertFalse(args.no_timeline)
+
         self.configure(show_timeline=False, title="NEW YORK", subtitle="2026 FALL")
         args = read_project(self.folder)
         self.assertTrue(args.no_timeline)
         self.assertEqual(args.title, "NEW YORK")
+
+    def test_line_color_hex_setting(self):
+        self.assertEqual(read_project(self.folder).line_color, "#e84553")
+        self.configure(line_color="#00a8FF")
+        self.assertEqual(read_project(self.folder).line_color, "#00a8FF")
+        for value in ("red", "#12345G", "#fff", "00a8FF"):
+            self.configure(line_color=value)
+            with self.assertRaisesRegex(ValueError, "line_color.*#RRGGBB"):
+                read_project(self.folder)
 
     def test_music_selection_and_invalid_presentation_settings(self):
         music = self.folder / "music/song.wav"

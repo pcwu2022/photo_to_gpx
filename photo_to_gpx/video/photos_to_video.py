@@ -19,7 +19,7 @@ from .travel_route import GEOD, Route, demo_route, load_gpx, scan_photos, raw_ph
 from .video_map import PROJECT, project_positions
 from .vehicle_icons import vehicle_icon
 from .video_map import (FlightMapCanvas, flight_camera_track, overview_pose, append_overview,
-                        map_attribution, offset_camera, camera_tracking_area)
+                        map_attribution, offset_camera, camera_tracking_area, validate_line_color)
 from .photo_markers import PhotoMarkers, photo_camera_padding
 from .playback import Playback, MIN_PHOTO_INTERVAL_SECONDS
 from .vehicle_config import VehicleConfig, BUILT_INS
@@ -70,7 +70,9 @@ def render(route, output, *, size, fps, duration, cache, offline, plain,
            # config=None, min_speed_mps=2000, max_screen_speed_px=540, max_zoom_rate=1):
            config=None, min_speed_mps=2000, max_screen_speed_px=0, max_zoom_rate=0, photo_size=0.15,
            music=None, music_timing="video", title="", subtitle="", photo_animation_seconds=0.4,
-           show_timeline=True, display_timezone="America/New_York", music_seconds=None):
+           show_timeline=True, display_timezone="America/New_York", music_seconds=None,
+           line_color="#e84553"):
+    line_color = validate_line_color(line_color)
     if music_timing not in {"video", "music"}:
         raise ValueError("music_timing must be video or music")
     if music_timing == "music" and music is None:
@@ -132,6 +134,8 @@ def render(route, output, *, size, fps, duration, cache, offline, plain,
         if name not in icons:
             icons[name] = vehicle_icon(name, icon_path if name == config.default else None)
     final_pose = overview_pose(draw_points, size, edge_padding)
+    if timeline:
+        timeline.set_icons(icons)
     if profile:
         cameras = [profile.camera_at(position.animation_time) for position in positions]
     elif camera == "fly":
@@ -172,7 +176,7 @@ def render(route, output, *, size, fps, duration, cache, offline, plain,
     points = project_positions(positions)
     frame_count = len(source_times)
     map_canvas = FlightMapCanvas(points, cameras, size, cache=cache, offline=offline, plain=plain,
-                                 trail=trail, provider=provider, max_tiles=max_tiles,
+                                 trail=trail, provider=provider, max_tiles=max_tiles, line_color=line_color,
                                  draw_points=draw_points, draw_times=draw_times)
     rotations = {}  # lazily cache 360 small RGBA sprites
     title_card = TitleCard(size, title, subtitle) if title.strip() else None
@@ -232,16 +236,18 @@ def render(route, output, *, size, fps, duration, cache, offline, plain,
                         if key not in rotations:
                             rotations[key] = icons[kind].rotate(-angle, resample=Image.Resampling.BICUBIC, expand=True)
                         sprite = rotations[key]
-                        if journey_seconds >= 0:
+                        show_journey = (journey_seconds >= 0 and
+                                        source_seconds < overview_start + overview_seconds)
+                        if show_journey:
                             frame.paste(sprite, (round(x - sprite.width / 2), round(y - sprite.height / 2)), sprite)
-                        if timeline and journey_seconds >= 0:
-                            timeline.draw(frame, position.timestamp)
+                        if timeline and show_journey:
+                            timeline.draw(frame, position.timestamp, kind)
                         if title_card:
                             if source_seconds <= intro_hold:
                                 title_card.draw(frame, source_seconds, intro_hold)
                             elif source_seconds >= overview_start + overview_seconds:
                                 title_card.draw(frame, source_seconds - overview_start - overview_seconds, overview_hold)
-                        frame.paste(footer, (0, size[1] - footer.height))
+                        frame.paste(footer, (0, size[1] - footer.height), footer)
                         process.stdin.write(frame.tobytes())
                         progress.update(1)
                 process.stdin.close()
@@ -284,7 +290,7 @@ def render(route, output, *, size, fps, duration, cache, offline, plain,
             "music_seconds": music_seconds, "music_looped": bool(music and music_timing == "video" and music_seconds < frame_count / fps),
             "title": title, "subtitle": subtitle, "intro_seconds": intro_seconds * clock_scale,
             "title_hold_seconds": intro_hold * clock_scale, "show_timeline": show_timeline,
-            "timeline_tick_spacing": timeline.mode if timeline else None,
+            "timeline_tick_spacing": timeline.mode if timeline else None, "line_color": line_color,
             "photo_animation_seconds": photo_animation_seconds * clock_scale,
             "encoder": codec, "render_seconds": round(elapsed, 2),
             "tiles": map_canvas.tile_count, "camera": camera, "map_provider": "schematic" if plain else provider,
@@ -380,6 +386,8 @@ def build_parser():
     parser.add_argument("--vehicle", choices=sorted(BUILT_INS), default="car")
     parser.add_argument("--icon", type=Path, help="Transparent SVG or raster image facing up/north")
     parser.add_argument("--no-trail", action="store_true")
+    parser.add_argument("--line-color", type=validate_line_color, default="#e84553",
+                        help="Travelled route line color in #RRGGBB hex format")
     parser.add_argument("--encoder", default="auto", help="auto, libx264, h264_nvenc, h264_qsv, etc.; software fallback")
     parser.add_argument("--music", type=Path, help="Soundtrack path; project example: music/song.mp3")
     parser.add_argument("--music-timing", choices=["video", "music"], default="video",
@@ -409,6 +417,7 @@ def execute(args, parser, *, check=False):
         parser.error("require even dimensions >=320x240, FPS 1..120, positive timing/camera/popup values, "
                      "photo_size >0 and <=1, and 1..5000 tiles")
     try:
+        validate_line_color(args.line_color)
         if args.music_timing == "music" and args.music is None:
             raise ValueError("music_timing: music requires a soundtrack")
         music_seconds = audio_duration(args.music) if args.music else None
@@ -456,6 +465,7 @@ def execute(args, parser, *, check=False):
                         duration=args.duration, cache=args.cache, offline=args.offline, plain=args.plain_map,
                         camera=args.camera, camera_seconds=args.camera_seconds,
                         vehicle=args.vehicle, icon_path=args.icon, trail=not args.no_trail,
+                        line_color=args.line_color,
                         encoder=args.encoder, provider=args.map_provider, popup_seconds=args.popup_seconds,
                         show_photos=not args.no_photos, local_span_km=args.local_span_km,
                         flight_km=args.flight_km, max_tiles=args.max_tiles,

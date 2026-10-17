@@ -7,6 +7,7 @@ See THIRD_PARTY_LICENSE.txt. No network requests occur during rendering.
 import io
 import math
 import os
+import re
 from pathlib import Path
 import urllib.request
 import urllib.parse
@@ -23,6 +24,12 @@ ESRI_ATTRIBUTION = ("Sources: Esri, HERE, Garmin, Intermap, increment P Corp., G
                     "NRCAN, GeoBase, IGN, Kadaster NL, Ordnance Survey, Esri Japan, METI, "
                     "Esri China (Hong Kong), © OpenStreetMap contributors, and the GIS User Community")
 PROJECT = Transformer.from_crs(4326, 3857, always_xy=True, force_over=True)
+
+
+def validate_line_color(value):
+    if not isinstance(value, str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", value):
+        raise ValueError("line_color: expected a hex color in #RRGGBB format")
+    return value
 
 
 def map_attribution(plain=False, provider="esri"):
@@ -106,7 +113,8 @@ def fetch_tile(x, y, zoom, cache, offline, provider):
 class MapCanvas:
     def __init__(self, points, size, *, cache, offline=False, plain=False,
                  camera="fixed", camera_seconds=0.6, fps=30, trail=True, provider="esri",
-                 draw_points=None, draw_times=None):
+                 draw_points=None, draw_times=None, line_color="#e84553"):
+        self.line_color = validate_line_color(line_color)
         self.size, self.camera, self.trail = size, camera, trail
         self.camera_alpha = 1 - math.exp(-1 / (fps * camera_seconds))
         aspect = size[0] / size[1]
@@ -182,7 +190,7 @@ class MapCanvas:
                 self.draw_cursor = cursor
             else:
                 path = [self.last, pixel]
-            self.draw.line(path, fill="#e84553", width=self.line_width)
+            self.draw.line(path, fill=self.line_color, width=self.line_width)
         self.last = pixel
         if self.camera == "follow":
             self.center = tuple(c + (p - c) * self.camera_alpha for c, p in zip(self.center, point))
@@ -289,7 +297,9 @@ def append_overview(cameras, start_index, target, transition_frames):
 class FlightMapCanvas:
     """Sparse multi-zoom tiles: prefetch once; bounded tile/viewport LRU at render time."""
     def __init__(self, points, cameras, size, *, cache, offline=False, plain=False,
-                 provider="esri", trail=True, max_tiles=1200, draw_points=None, draw_times=None):
+                 provider="esri", trail=True, max_tiles=1200, draw_points=None, draw_times=None,
+                 line_color="#e84553"):
+        self.line_color = validate_line_color(line_color)
         from collections import OrderedDict
         self.size, self.cameras, self.points = size, cameras, points
         self.cache, self.provider, self.plain, self.trail = Path(cache), provider, plain, trail
@@ -385,5 +395,5 @@ class FlightMapCanvas:
             traveled = [self.screen(path_points[i], index) for i in indices]
             traveled.append(self.screen(point, index))
             if len(traveled) >= 2:
-                draw.line(traveled, fill="#e84553", width=4)
+                draw.line(traveled, fill=self.line_color, width=4)
         return frame, self.screen(point, index)

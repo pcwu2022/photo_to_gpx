@@ -62,6 +62,7 @@ For example, these are the main settings to edit in `config.json` (omitted setti
   "offline": false,
   "show_photos": true,
   "trail": true,
+  "line_color": "#e84553",
   "sleep_adjustment": true
 }
 ```
@@ -221,7 +222,7 @@ The default `--camera fly` plans every camera viewport before encoding. It follo
 
 Compute the union of required tiles across all camera zoom levels, then download/cache it before rendering. `--max-tiles` defaults to 1,200; when necessary, lower map zoom levels to stay within that budget. Requests use four workers. Rendering uses only cached files, with an LRU holding 128 tiles and four stitched viewport atlases; no network requests occur during encoding. Background atlases are rebuilt only when tile bounds or zoom level change. The route and trail use an independent curve sampling layer, so short turns remain rounded even when their photo times fall between video frames. Both the vehicle and the trail follow the same curves.
 
-`--camera fixed` frames the complete route; `--camera follow` uses fixed zoom and keeps the vehicle centered under speed control; with speed controls disabled, it uses exponential center smoothing. Both share the cached tile renderer and final overview. Only the traveled red trail is drawn; future route segments remain hidden.
+`--camera fixed` frames the complete route; `--camera follow` uses fixed zoom and keeps the vehicle centered under speed control; with speed controls disabled, it uses exponential center smoothing. Both share the cached tile renderer and final overview. Only the traveled trail is drawn; future route segments remain hidden.
 
 The default provider is the public [Esri World Topographic Map service](https://services.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer). `--map-provider carto` requires `CARTO_BASEMAP_API_KEY` for uncached tiles; [CARTO requires an API key](https://www.carto.com/basemaps/apikey/) and its anonymous endpoint returns watermarked PNGs. Cache paths use separate provider namespaces under `.cache/photo-video/`. `--offline` refuses missing/corrupt tiles, while `--plain-map` provides a schematic background without geographic tiles. Full attribution is cached into a wrapped footer and remains visible at smaller resolutions.
 
@@ -258,13 +259,13 @@ Use `--config vehicles.example.json` to select icons by raw photo index:
 
 Indices are **1-based and inclusive**, assigned to all supported image files in the directory recursively, sorted by case-sensitive relative filename in natural numeric order (`1.jpg`, `2.jpg`, …, `10.jpg`), **before metadata filtering or chronological sorting**. Images missing GPS or timestamps still count. Non-image files do not count. Later rules win when ranges overlap, so index 5 above selects `plane`. Unspecified indices use `default_icon`, or `--vehicle` if the JSON omits it (default `car`).
 
-Each travel leg uses the icon selected for its destination photo's raw index; at a photo arrival and its pause, that photo's icon is used. Available built-ins are `car`, `train`, `bullet_train`, `plane`, `boat`, and `bus`. Use `--vehicle boat` for a boat by default, or `"icon": "boat"` in a JSON range. For a custom north-facing transparent SVG or raster image, add an entry such as `"icons": {"ferry": "icons/ferry.png"}` and use `"icon": "ferry"` in a range. Image paths resolve relative to the JSON file.
+Each travel leg uses the icon selected for its destination photo's raw index; at a photo arrival and its pause, that photo's icon is used. Available built-ins are `car`, `train`, `bullet_train`, `subway`, `plane`, `boat`, and `bus`. Use `--vehicle boat` for a boat by default, or `"icon": "boat"` in a JSON range. For a custom north-facing transparent SVG or raster image, add an entry such as `"icons": {"ferry": "icons/ferry.png"}` and use `"icon": "ferry"` in a range. Image paths resolve relative to the JSON file.
 
 The generated `*.photo-index.json` lists every raw index, relative filename, selected icon, whether it became a route anchor/photo event, and any skip reason. It also records each valid photo’s UTC timestamp, chronological index, and timestamp source (`exif_offset`, `gps_utc_offset`, or `fallback_timezone`). Chronological rendering does not change raw icon indices. Consult this manifest when editing ranges. `vehicles.example.json` illustrates the requested ranges; its assignments do not infer actual transport modes from the photos.
 
 ## Editable SVG icons
 
-Built-in artwork lives in `photo_to_gpx/assets/icons/car.svg`, `train.svg`, `bullet_train.svg`, `plane.svg`, `boat.svg`, and `bus.svg`. Edit these files to change the built-in icons. The renderer reads them directly through `vehicle_icons.py`, rasterizes each once using CairoSVG, and caches rotations during rendering. Icons face north/up and have a transparent background. Custom SVG files also work with `--icon` and the JSON `icons` mapping; PNG and other Pillow-supported formats remain supported.
+Built-in artwork lives in `photo_to_gpx/assets/icons/car.svg`, `train.svg`, `bullet_train.svg`, `subway.svg`, `plane.svg`, `boat.svg`, and `bus.svg`. Edit these files to change the built-in icons. The renderer reads them directly through `vehicle_icons.py`, rasterizes each once using CairoSVG, and caches rotations during rendering. Icons face north/up and have a transparent background. Custom SVG files also work with `--icon` and the JSON `icons` mapping; PNG and other Pillow-supported formats remain supported.
 
 Use `--vehicle bus` or `--vehicle bullet_train`, or select those names in JSON ranges. SVG files are the source artwork; edit them directly. On Linux, CairoSVG requires the system Cairo library (typically `libcairo2`).
 

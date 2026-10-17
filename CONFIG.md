@@ -142,6 +142,7 @@ These settings affect movement, independently of arrival waits and the overview.
 | `photo_size` | `0.15` | Number greater than `0` and at most `1` | Photo-circle diameter as a fraction of viewport width at the closest planned zoom. `0.15` means 15% of the viewport width; `0.075` halves the default diameter; `0.3` doubles it. The resulting geographic diameter stays fixed, so photos shrink with the map when zooming out. Has no visible effect when `show_photos` is `false`. |
 | `photo_animation_seconds` | `0.4` | Number at least `0`, in seconds | Photo pop-in duration, with an eased small-to-full-size transition anchored at the photo's geographic center. Added to the arrival pause for each real photo, including the first photo and same-timestamp bursts. `0` makes photos appear immediately with no fade or scale animation. |
 | `trail` | `true` | Boolean | Draws the travelled route behind the vehicle. Future route segments remain hidden. |
+| `line_color` | `"#e84553"` | Hex string | Route line color in `#RRGGBB` format, e.g. `"#00A8FF"`. |
 | `long_pause` | `0.4` | Number at least `0`, in seconds | Arrival hold after a segment whose distance is at least `flight_km`. `0` disables these holds. |
 | `short_pause` | `0.2` | Number at least `0`, in seconds | Arrival hold after a segment shorter than `flight_km`. `0` disables these holds. |
 | `overview_seconds` | `3` | Positive number of seconds | Final camera transition to a view of the entire route and all accepted photo markers. Also the opening zoom-in duration when a title is present. |
@@ -157,7 +158,7 @@ For a single short-leg arrival, the base hold is `photo_animation_seconds + shor
 | Field | Default | Allowed values | Meaning |
 | --- | --- | --- | --- |
 | `vehicles` | `"vehicles.json"` | Existing JSON file path or `null` | Loads the default icon, custom artwork mappings, and raw-photo-index icon ranges. `null` skips the rules file. |
-| `vehicle` | `"car"` | `"car"`, `"train"`, `"bullet_train"`, `"plane"`, `"boat"`, `"bus"` | Fallback vehicle when the rules file does not specify `default_icon`, or when `vehicles` is `null`. A rules file's `default_icon` overrides this setting. |
+| `vehicle` | `"car"` | `"car"`, `"train"`, `"bullet_train"`, `"subway"`, `"plane"`, `"boat"`, `"bus"` | Fallback vehicle when the rules file does not specify `default_icon`, or when `vehicles` is `null`. A rules file's `default_icon` overrides this setting. |
 | `icon` | `null` | Existing SVG or raster image path, or `null` | Optional replacement artwork for the effective default vehicle. Artwork should face north/up and have a transparent background. A named custom artwork mapping in `vehicles.json` takes precedence over this replacement. |
 
 Vehicle ranges belong in `vehicles.json`, rather than `config.json`. For example:
