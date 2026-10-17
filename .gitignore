@@ -54,8 +54,9 @@ htmlcov/
 .ipynb_checkpoints/
 
 # Local photos, map cache, and generated travel data
-/input/
-/.cache/
+/projects/
+/vehicles.test*.json
+.cache/
 /sample/
 *.mp4
 *.gpx

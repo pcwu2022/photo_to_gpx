@@ -236,7 +236,7 @@ Edits are pure functions on this model, enabling undo/redo and project save.
 2. Photos with no GPS are visibly darkened, filterable, and excluded from the route by default.
 3. Changing mode after node N changes the icon for every subsequent leg in preview and in the exported video.
 4. A Timeline import visibly changes routes between photos while all photo anchors stay exact, and prefilled modes can be overridden.
-5. Exported video for the `input/test1` photoset matches CLI output within visual tolerance (golden-frame comparison on selected frames).
+5. Exported video for the `projects/test1/photos` photoset matches CLI output within visual tolerance (golden-frame comparison on selected frames).
 6. Rendering works fully offline from cached tiles; a failed render never damages an existing output.
 7. No photo data leaves the device; verified by network inspection in tests.
 8. Installers are signed; app starts on a clean machine with no Python or FFmpeg preinstalled.

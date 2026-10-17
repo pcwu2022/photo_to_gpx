@@ -59,7 +59,7 @@ def render(route, output, *, size, fps, duration, cache, offline, plain,
            popup_seconds=4, show_photos=True, local_span_km=12.5, flight_km=150, max_tiles=1200,
            long_pause=0.2, short_pause=0.05, city_km=5, overview_seconds=5, overview_hold=5,
            # config=None, min_speed_mps=2000, max_screen_speed_px=540, max_zoom_rate=1):
-           config=None, min_speed_mps=2000, max_screen_speed_px=0, max_zoom_rate=0):
+           config=None, min_speed_mps=2000, max_screen_speed_px=0, max_zoom_rate=0, photo_size=0.2):
     video_seconds = duration or route.duration
     motion_count = max(2, round(video_seconds * fps))
     motion_seconds = (motion_count - 1) / fps
@@ -78,7 +78,8 @@ def render(route, output, *, size, fps, duration, cache, offline, plain,
                         photo_interval=(math.ceil(MIN_PHOTO_INTERVAL_SECONDS * fps - 1e-8) / fps if show_photos and
                                         any(Path(p.path).is_file() for _, p in route.events) else 0))
     markers = PhotoMarkers(route.events, route.duration, motion_seconds, size, duration=popup_seconds,
-                           arrival_time=playback.arrival_time, photo_arrival_time=playback.photo_arrival_time, fps=fps)
+                           arrival_time=playback.arrival_time, photo_arrival_time=playback.photo_arrival_time, fps=fps,
+                           photo_size=photo_size)
     overview_start = math.ceil(playback.duration * fps) / fps
     overview_hold = max(overview_hold, popup_seconds)
     end_seconds = overview_start + overview_seconds + overview_hold
@@ -234,7 +235,8 @@ def render(route, output, *, size, fps, duration, cache, offline, plain,
             "photo_marker_placement": "geographic",
             "photo_reference_camera_span_m": markers.reference_span_m,
             "photo_world_diameter_m": markers.world_diameter_m,
-            "photo_closest_zoom_diameter_px": size[0] / 5,
+            "photo_size": photo_size,
+            "photo_closest_zoom_diameter_px": size[0] * photo_size,
             "photo_overview_diameter_px": markers.world_diameter_m / final_pose[2] * size[0],
             "photo_clusters": len(markers.groups), "overlay_issues": markers.issues,
             "photo_display": markers.report(fps) if show_photos else [],
@@ -242,7 +244,7 @@ def render(route, output, *, size, fps, duration, cache, offline, plain,
                               **asdict(photo)} for t, photo in route.events]}
 
 
-def main():
+def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--photos", type=Path)
@@ -291,12 +293,18 @@ def main():
     parser.add_argument("--config", type=Path, help="JSON icon ranges using 1-based raw photo indices")
     parser.add_argument("--turn-radius-m", type=float, default=1000, help="Local corner smoothing radius; 0 disables curves")
     parser.add_argument("--no-photos", action="store_true")
+    parser.add_argument("--photo-size", type=float, default=0.2,
+                        help="Photo diameter as a fraction of viewport width at closest zoom; >0 and <=1")
     parser.add_argument("--camera-seconds", type=float, default=0.6)
     parser.add_argument("--vehicle", choices=sorted(BUILT_INS), default="car")
     parser.add_argument("--icon", type=Path, help="Transparent SVG or raster image facing up/north")
     parser.add_argument("--no-trail", action="store_true")
     parser.add_argument("--encoder", default="auto", help="auto, libx264, h264_nvenc, h264_qsv, etc.; software fallback")
-    args = parser.parse_args()
+    return parser
+
+
+def execute(args, parser, *, check=False):
+    """Validate and prepare the same route for project and legacy commands."""
     if args.duration is None and args.timing == "time":
         args.duration = 90
     if (args.width < 320 or args.height < 240 or args.width % 2 or args.height % 2
@@ -305,9 +313,11 @@ def main():
                        args.popup_seconds, args.city_km, args.overview_seconds, args.overview_hold))
             or not all(math.isfinite(v) and v >= 0 for v in (args.long_pause, args.short_pause, args.turn_radius_m,
                        args.min_speed_mps, args.max_screen_speed_px, args.max_zoom_rate, args.sleep_distance_km))
+            or not math.isfinite(args.photo_size) or not 0 < args.photo_size <= 1
             or not 1 <= args.max_tiles <= 5000
             or (args.duration is not None and (not math.isfinite(args.duration) or args.duration <= 0))):
-        parser.error("require even dimensions >=320x240, FPS 1..120, positive timing/camera/popup values, and 1..5000 tiles")
+        parser.error("require even dimensions >=320x240, FPS 1..120, positive timing/camera/popup values, "
+                     "photo_size >0 and <=1, and 1..5000 tiles")
     try:
         config = VehicleConfig(args.config, args.vehicle)
         if args.photos:
@@ -344,6 +354,11 @@ def main():
         for issue in route.issues:
             print(f"{'Warning' if issue.get('skipped') is False else 'Skipped'}: {issue['path']}: {issue['reason']}", file=sys.stderr)
         print(f"Accepted {len(route.photos)} route points, {len(route.events)} photo events", flush=True)
+        if check:
+            print(f"Inputs valid. Video destination: {args.output}")
+            if args.photos:
+                print(f"Photo index: {manifest_path}")
+            return 0
         report = render(route, args.output, size=(args.width, args.height), fps=args.fps,
                         duration=args.duration, cache=args.cache, offline=args.offline, plain=args.plain_map,
                         camera=args.camera, camera_seconds=args.camera_seconds,
@@ -355,7 +370,7 @@ def main():
                         city_km=args.city_km, overview_seconds=args.overview_seconds,
                         overview_hold=args.overview_hold, config=config,
                         min_speed_mps=args.min_speed_mps, max_screen_speed_px=args.max_screen_speed_px,
-                        max_zoom_rate=args.max_zoom_rate)
+                        max_zoom_rate=args.max_zoom_rate, photo_size=args.photo_size)
         report.update({"input_records": len(photos), "accepted_route_points": len(route.photos),
                        "issues": issues, "timezone_for_missing_offsets": args.timezone})
         report_path = args.output.with_suffix(".report.json")
@@ -365,6 +380,11 @@ def main():
         print(f"Error: {error}", file=sys.stderr)
         return 1
     return 0
+
+
+def main(argv=None):
+    parser = build_parser()
+    return execute(parser.parse_args(argv), parser)
 
 
 if __name__ == "__main__":

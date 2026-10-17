@@ -13,7 +13,11 @@ class PhotoMarkers:
     FADE_IN = 0.18
 
     def __init__(self, events, route_duration, motion_seconds, size, *, duration=4,
-                 cluster_seconds=30, cluster_meters=50, arrival_time=None, photo_arrival_time=None, fps=30):
+                 cluster_seconds=30, cluster_meters=50, arrival_time=None, photo_arrival_time=None, fps=30,
+                 photo_size=0.2):
+        if not math.isfinite(photo_size) or not 0 < photo_size <= 1:
+            raise ValueError("photo_size must be greater than 0 and at most 1")
+        self.photo_size = photo_size
         self.duration, self.size = duration, size
         self.cache, self.scaled_cache, self.issues = OrderedDict(), OrderedDict(), []
         self.groups, self.entries = [], []
@@ -40,7 +44,8 @@ class PhotoMarkers:
             self.entries.append((start, math.inf, photo))
         self.starts = [e[0] for e in self.entries]
         self.peak = max(1, len(self.entries))
-        self.diameter = max(1, round(size[0] / 5))
+        # Keep a usable source thumbnail even for very small display fractions.
+        self.diameter = max(16, round(size[0] * photo_size))
         self.set_reference_span(size[0])
         self.visible_frames = [0] * len(self.entries)
         self.full_frames = [0] * len(self.entries)
@@ -96,7 +101,7 @@ class PhotoMarkers:
         if not math.isfinite(span_m) or span_m <= 0:
             raise ValueError("photo reference camera span must be finite and positive")
         self.reference_span_m = span_m
-        self.world_diameter_m = span_m / 5
+        self.world_diameter_m = span_m * self.photo_size
 
     def geometry(self, index, screen, reference_x, span_m=None):
         center = screen(self.anchor(index, reference_x))
@@ -118,7 +123,8 @@ class PhotoMarkers:
         return self.scaled_cache[key]
 
     def draw(self, frame, seconds, screen, reference_x, vehicle_screen=None, *, span_m=None):
-        scale = self.reference_span_m / (span_m or self.reference_span_m)
+        scale = (self.size[0] * self.photo_size / self.diameter
+                 * self.reference_span_m / (span_m or self.reference_span_m))
         count = 0
         for i in self.active(seconds):
             start, _, photo = self.entries[i]

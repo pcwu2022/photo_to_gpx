@@ -2,6 +2,82 @@
 
 A local Python tool that turns timestamped GPS photos into an H.264 MP4 with a moving car, train, bullet train, plane, boat, or bus, smooth flight camera transitions, rounded local turns, fixed arrival pauses, a ground-speed floor and zoom-dependent screen-speed ceiling, persistent circular photo markers, and a final overview of every accepted photo. Defaults: **1920×1080, 30 FPS**, **90 seconds of baseline motion**, retimed by speed limits, plus arrival pauses and a 10-second overview, elapsed-time-based playback, and the flying camera.
 
+## Folder-based workflow
+
+See [CONFIG.md](CONFIG.md) for every `config.json` field, default, allowed value, and example selection.
+
+Each trip or test input is a self-contained project. Edit its JSON files and rerun the same command:
+
+```text
+projects/my-trip/
+├── config.json                 # Input paths and rendering settings
+├── vehicles.json               # Default icon, custom icons, and photo-index ranges
+├── photos/                     # Photos, optionally in subfolders
+├── icons/                      # Optional custom vehicle artwork
+├── .cache/photo-video/         # Downloaded map tiles, created when needed
+└── output/
+    ├── travel.mp4
+    ├── travel.report.json
+    └── travel.photo-index.json
+```
+
+```bash
+.venv/bin/python -m pip install -r requirements-video.txt
+.venv/bin/python -m photo_to_gpx init projects/my-trip
+# Copy photos into projects/my-trip/photos/.
+# Edit projects/my-trip/config.json and projects/my-trip/vehicles.json.
+.venv/bin/python -m photo_to_gpx check projects/my-trip
+.venv/bin/python -m photo_to_gpx run projects/my-trip
+
+# Shorthand for run:
+.venv/bin/python -m photo_to_gpx projects/my-trip
+```
+
+`init` writes a complete config with all supported settings and a starter `vehicles.json`. It preserves existing photos and vehicle rules, and refuses to replace an existing `config.json`. With an existing photo collection and no `photos/` subfolder, it uses `"photos": "."` so filenames and raw vehicle indices stay intact. To adopt existing tests, initialize each folder once and edit its local vehicle rules:
+
+```bash
+.venv/bin/python -m photo_to_gpx init projects/test1
+# Edit projects/test1/vehicles.json.
+.venv/bin/python -m photo_to_gpx check projects/test1
+.venv/bin/python -m photo_to_gpx run projects/test1
+```
+
+`check` validates settings, vehicle rules, metadata, and route construction, then writes `output/travel.photo-index.json`. Use that index to edit vehicle ranges before rendering. It reports skipped photos and fails if there are too few valid route points. It does not download tiles or probe FFmpeg; those are checked during `run`. `run` creates the video, report, and photo index. Repeated runs replace these generated files; a failed encode preserves the previous video. Omit the folder to use the current directory.
+
+For example, these are the main settings to edit in `config.json` (omitted settings use defaults):
+
+```json
+{
+  "photos": "photos",
+  "timezone": "America/New_York",
+  "vehicles": "vehicles.json",
+  "output": "output/travel.mp4",
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "duration": 90,
+  "camera": "fly",
+  "plain_map": false,
+  "offline": false,
+  "show_photos": true,
+  "trail": true,
+  "sleep_adjustment": true
+}
+```
+
+All relative paths resolve from the project folder, including `vehicles`, `photos`, `gpx`, `icon`, `cache`, and `output`. Custom icon paths inside `vehicles.json` resolve from that file's directory. Output and cache paths must remain inside the project. Set `"vehicles": null` to use just the built-in `vehicle` setting without a vehicle rules file. Set `"photos": null` and `"gpx": "trip.gpx"` to use GPX, or `"photos": null` and `"demo": true` for a synthetic route. Exactly one source must be selected.
+
+Other config keys match the renderer's flags with underscores, for example `min_speed_mps`, `turn_radius_m`, and `overview_hold`. The exceptions are `vehicles` for the old vehicle-rules `--config`, and the positive booleans `show_photos`, `trail`, and `sleep_adjustment`. JSON requires numbers and booleans rather than quoted strings; unknown keys and invalid values are errors. The generated config lists every option. See the full flag descriptions with `python -m photo_to_gpx.video.photos_to_video --help`; the technical sections below use those flag names as a reference.
+
+A small, fully offline demo project is included:
+
+```bash
+.venv/bin/python -m photo_to_gpx check examples/demo
+.venv/bin/python -m photo_to_gpx run examples/demo
+```
+
+The original flag-based CLI and converter module commands remain available for existing scripts.
+
 ## Assessment and reuse
 
 - `photo_to_gpx/converters/photos_to_timeline.py` already composes photo → GPX → Timeline JSON. Keep it for exporting to the existing Timeline Visualizer. The video pipeline avoids that intermediate conversion so photo paths, altitude, subsecond timestamps, and UTC offsets survive.
@@ -41,6 +117,7 @@ Modules: `photo_to_gpx/video/travel_route.py` handles metadata and timing; `phot
 photo_to_gpx/
 ├── __init__.py
 ├── __main__.py              # python -m photo_to_gpx
+├── cli.py                   # Project init/check/run and JSON settings
 ├── converters/              # Photo → GPX → Timeline tools
 │   ├── convert.py
 │   ├── gpx_to_timeline.py
@@ -113,7 +190,7 @@ Limits can change the resulting video length; `--duration` is a baseline, not a 
 --min-speed-mps 0 --max-screen-speed-px 0 --max-zoom-rate 0
 ```
 
-If explicitly configured limits still conflict, the screen/zoom ceiling takes priority and the report counts the affected intervals. The default supplied `input/test1` run has no conflicts. Reports include per-leg nominal/adjusted durations and ground speeds, plus frame-level measured ground speed, screen speed, and zoom rate. Limits apply during the journey; the separate final overview retains its configured transition duration.
+If explicitly configured limits still conflict, the screen/zoom ceiling takes priority and the report counts the affected intervals. The default supplied `projects/test1` run has no conflicts. Reports include per-leg nominal/adjusted durations and ground speeds, plus frame-level measured ground speed, screen speed, and zoom rate. Limits apply during the journey; the separate final overview retains its configured transition duration.
 
 ## Caching and rendering
 
@@ -135,7 +212,7 @@ Automatic encoding probes actual one-frame H.264 encodes with NVENC, QSV, and Vi
 
 Each accepted photo appears in a **circular, center-cropped thumbnail** with a white rim, soft shadow, and small timestamp. The circle center is its exact EXIF geographic location. Images honor EXIF orientation. Every marker stays available for the rest of the video, and multiple images coexist. A marker may move outside the current viewport as the camera travels; it returns when its location comes back into view.
 
-Photo sizes are fixed in projected map units. At the closest camera zoom anywhere in the video, each circle has a diameter of **one-fifth of the screen width** (384 pixels at 1920×1080). Zooming out by a factor of two halves the circle diameter; its shadow and label scale with it. Photo centers, sizes, and the background use the same camera transform throughout the journey and final overview. There are no screen offsets or final-layout rearrangements. The vehicle draws last.
+Photo sizes are fixed in projected map units. At the closest camera zoom anywhere in the video, each circle has a diameter of **`photo_size` × the screen width** (default `0.2`, or 384 pixels at 1920×1080). Set `"photo_size": 0.1` in `config.json` to halve that diameter; allowed values are greater than `0` and at most `1`. Zooming out by a factor of two halves the circle diameter; its shadow and label scale with it. Photo centers, sizes, and the background use the same camera transform throughout the journey and final overview. There are no screen offsets or final-layout rearrangements. The vehicle draws last.
 
 All photos remain registered at their locations. At wide zoom levels, thumbnails can become subpixel-sized and nearby photos can overlap; rasterization uses at least one pixel without moving the geographic anchor. The overview preserves the same geographical placement and map scale rather than promising individually readable thumbnails at global zoom. Reports include each marker's latitude/longitude, projected diameter, reference camera width, and overview pixel diameter.
 
@@ -168,7 +245,7 @@ Built-in artwork lives in `photo_to_gpx/assets/icons/car.svg`, `train.svg`, `bul
 
 Use `--vehicle bus` or `--vehicle bullet_train`, or select those names in JSON ranges. SVG files are the source artwork; edit them directly. On Linux, CairoSVG requires the system Cairo library (typically `libcairo2`).
 
-## Run
+## Legacy flag-based commands
 
 ```bash
 .venv/bin/python -m pip install -r requirements-video.txt
@@ -190,15 +267,15 @@ Use `--vehicle bus` or `--vehicle bullet_train`, or select those names in JSON r
 # Existing GPX and custom north-facing transparent icon.
 .venv/bin/python -m photo_to_gpx --gpx trip.gpx --icon car.png -o trip.mp4
 
-# Updated test1 video: persistent map photos and raw-index icon ranges.
-.venv/bin/python -m photo_to_gpx --photos input/test1 --duration 90 \
-  --config vehicles.example.json --min-speed-mps 2000 --max-screen-speed-px 0 \
+# Original test1 invocation (prefer the folder workflow above).
+.venv/bin/python -m photo_to_gpx --photos projects/test1/photos --duration 90 \
+  --config projects/test1/vehicles.json --min-speed-mps 2000 --max-screen-speed-px 0 \
   -o sample/test1.mp4
 
 .venv/bin/python -m photo_to_gpx --help
-.venv/bin/python -m unittest discover -s tests -v
+PYTHONPATH=../.. .venv/bin/python -m unittest discover -s tests -v
 ```
 
 The adjacent `*.report.json` records frame count, encoder, rendering elapsed time, skipped-photo reasons, long-gap warnings, and each retained photo's animation time, UTC timestamp, coordinates, altitude, and path. Invalid input that prevents rendering is explained on stderr.
 
-`sample/test1.mp4` is the latest render of the supplied `input/test1` photos, with geographically fixed, map-scaled markers and simultaneous travel/zoom. The 90-second baseline produces approximately 105 seconds including arrival pauses and the final overview; both screen-speed and zoom-rate ceilings are disabled by default. The adjacent report and raw-photo index describe the render. Local photos, generated videos, and reports are excluded from Git. To create a synthetic demo, use the `--demo` command above.
+`sample/test1.mp4` is the latest render of the supplied `projects/test1` photos, with geographically fixed, map-scaled markers and simultaneous travel/zoom. The 90-second baseline produces approximately 105 seconds including arrival pauses and the final overview; both screen-speed and zoom-rate ceilings are disabled by default. The adjacent report and raw-photo index describe the render. Local photos, generated videos, and reports are excluded from Git. To create a synthetic demo, use the `--demo` command above.
