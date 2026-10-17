@@ -1,3 +1,9 @@
+# Original video implementation prompt
+
+Historical design input; requirements and research below may be outdated. Use the [README](../../README.md) and [configuration reference](../configuration.md) for current behavior.
+
+---
+
 Act as a **senior Python developer specializing in geospatial visualization and video rendering**.
 
 I am building a local Python tool that scans travel photos, extracts EXIF timestamps/GPS coordinates, reconstructs my route, and generates an animated MP4 showing a **car/train moving along the route**, with the actual travel photos appearing as pop-ups at the appropriate locations and times.

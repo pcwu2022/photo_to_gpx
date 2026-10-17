@@ -1,5 +1,2 @@
-Pillow>=10.0
-pyproj>=3.6
-imageio-ffmpeg>=0.6
-tqdm>=4.66
-CairoSVG>=2.7
+# Compatibility entry point; use requirements.txt for new installations.
+-r requirements.txt

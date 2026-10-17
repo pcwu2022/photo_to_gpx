@@ -1,13 +1,13 @@
-# config.json reference
+# Video project configuration
 
 Each project stores its settings in `projects/<name>/config.json`. Edit that file, validate it, and render with the same commands each time:
 
 ```bash
-python -m photo_to_gpx check projects/test1
-python -m photo_to_gpx run projects/test1
+python -m photo_to_gpx check projects/my-trip
+python -m photo_to_gpx run projects/my-trip
 ```
 
-This reference covers all 50 supported fields. Defaults below match the tuned `projects/test4/config.json` settings and are used by `init`. Existing projects keep their explicit overrides; `examples/demo` keeps its shorter preview settings.
+This reference covers all 50 supported fields. Defaults below are used by `init`. Existing projects keep their explicit overrides; `examples/demo` keeps its shorter preview settings.
 
 ## JSON and path rules
 
@@ -19,7 +19,7 @@ This reference covers all 50 supported fields. Defaults below match the tuned `p
 - Relative paths resolve from the directory containing `config.json`, regardless of your working directory. Absolute input paths are also supported.
 - `output` and `cache` must resolve inside the project folder. Custom artwork paths within `vehicles.json` resolve from that file's directory.
 
-For example, `"photos": "photos"` in `projects/test1/config.json` reads `projects/test1/photos/`.
+For example, `"photos": "photos"` in `projects/my-trip/config.json` reads `projects/my-trip/photos/`.
 
 ## Input selection
 
@@ -259,7 +259,7 @@ This keeps the movement baseline proportional to original elapsed time. Pauses a
 }
 ```
 
-For a complete short demo configuration, see [examples/demo/config.json](examples/demo/config.json).
+For a complete short demo configuration, see [examples/demo/config.json](../examples/demo/config.json).
 
 ## Checking changes
 
@@ -267,4 +267,4 @@ For a complete short demo configuration, see [examples/demo/config.json](example
 
 `run` additionally plans camera/speed timing, prepares tiles, decodes artwork, probes the encoder, and renders. Errors that depend on these rendering steps can still occur after a successful `check`, including missing offline tiles, unusable artwork, or the compressed-duration minimum described above.
 
-See [README.md](README.md) for project setup and the renderer's implementation details.
+See the [README](../README.md) for setup and the [rendering reference](rendering.md) for implementation details.

@@ -6,8 +6,8 @@ from xml.etree import ElementTree as ET
 
 from PIL import Image
 
-from python_projects.photo_to_gpx.photo_to_gpx.video.vehicle_config import BUILT_INS
-from python_projects.photo_to_gpx.photo_to_gpx.video.vehicle_icons import vehicle_icon, ICON_DIRECTORY
+from photo_to_gpx.video.vehicle_config import BUILT_INS
+from photo_to_gpx.video.vehicle_icons import vehicle_icon, ICON_DIRECTORY
 
 
 class VehicleIconChecks(unittest.TestCase):

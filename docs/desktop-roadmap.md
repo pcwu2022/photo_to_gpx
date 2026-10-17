@@ -1,4 +1,6 @@
-# APP_SPEC: Photo Travel Video Studio
+# Desktop app roadmap: Photo Travel Video Studio
+
+**Status: proposed future application, not implemented in this repository.** The current product is the local Python video CLI documented in the [README](../README.md). This document describes future scope rather than available features.
 
 A consumer desktop app that turns a folder of geotagged photos (optionally enriched with Google Timeline data) into a shareable animated travel-map video. It is the productized successor to the existing Python CLI (`photo_to_gpx/video/photos_to_video.py` and its modules), which remains the reference implementation for all route, timing, camera, and rendering behavior.
 
@@ -236,7 +238,7 @@ Edits are pure functions on this model, enabling undo/redo and project save.
 2. Photos with no GPS are visibly darkened, filterable, and excluded from the route by default.
 3. Changing mode after node N changes the icon for every subsequent leg in preview and in the exported video.
 4. A Timeline import visibly changes routes between photos while all photo anchors stay exact, and prefilled modes can be overridden.
-5. Exported video for the `projects/test1/photos` photoset matches CLI output within visual tolerance (golden-frame comparison on selected frames).
+5. Exported video for a fixed reference photoset matches CLI output within visual tolerance (golden-frame comparison on selected frames).
 6. Rendering works fully offline from cached tiles; a failed render never damages an existing output.
 7. No photo data leaves the device; verified by network inspection in tests.
 8. Installers are signed; app starts on a clean machine with no Python or FFmpeg preinstalled.

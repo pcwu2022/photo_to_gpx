@@ -10,12 +10,12 @@ from dataclasses import replace
 from PIL import Image
 from PIL.TiffImagePlugin import IFDRational as Rational
 
-from python_projects.photo_to_gpx.photo_to_gpx.video.travel_route import GEOD, Photo, Route, demo_route, scan_photos, raw_photo_paths
-from python_projects.photo_to_gpx.photo_to_gpx.video.video_map import MapCanvas, project_positions, flight_camera_track, FlightMapCanvas
-from python_projects.photo_to_gpx.photo_to_gpx.video.photo_markers import PhotoMarkers
-from python_projects.photo_to_gpx.photo_to_gpx.video.playback import Playback
-from python_projects.photo_to_gpx.photo_to_gpx.video.vehicle_config import VehicleConfig
-from python_projects.photo_to_gpx.photo_to_gpx.video.speed_control import SpeedProfile
+from photo_to_gpx.video.travel_route import GEOD, Photo, Route, demo_route, scan_photos, raw_photo_paths
+from photo_to_gpx.video.video_map import MapCanvas, project_positions, flight_camera_track, FlightMapCanvas
+from photo_to_gpx.video.photo_markers import PhotoMarkers
+from photo_to_gpx.video.playback import Playback
+from photo_to_gpx.video.vehicle_config import VehicleConfig
+from photo_to_gpx.video.speed_control import SpeedProfile
 
 
 def write_test_photo(path, timestamp, offset="+08:00"):
